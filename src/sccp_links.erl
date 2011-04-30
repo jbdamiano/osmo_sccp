@@ -30,7 +30,7 @@
 % client functions, may internally talk to our sccp_user server
 -export([register_linkset/3, unregister_linkset/1]).
 -export([register_link/3, unregister_link/2, set_link_state/3]).
--export([get_pid_for_link/3]).
+-export([get_pid_for_link/2]).
 
 -record(slink, {
 	key,		% {linkset_name, sls}
@@ -59,7 +59,7 @@
 % initialization code
 
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, []).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init(_Arg) ->
 	LinksetTbl = ets:new(sccp_linksets, [ordered_set,
@@ -69,7 +69,7 @@ init(_Arg) ->
 	% within client/caller process
 	LinkTbl = ets:new(sccp_link_table, [ordered_set, named_table,
 					    {keypos, #slink.key}]),
-	#su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl}.
+	{ok, #su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl}}.
 
 % client side API
 
@@ -94,7 +94,7 @@ set_link_state(LinksetName, Sls, State) ->
 % the lookup functions can directly use the ets named_table from within
 % the client process, no need to go through a synchronous IPC
 
-get_pid_for_link(LinkTable, LinksetName, Sls) ->
+get_pid_for_link(LinksetName, Sls) ->
 	case ets:lookup(sccp_link_table, {LinksetName, Sls}) of
 	    [#slink{user_pid = Pid}] ->	
 		% FIXME: check the link state 
@@ -105,10 +105,11 @@ get_pid_for_link(LinkTable, LinksetName, Sls) ->
 
 % server side code
 
-handle_call({register_linkset, {LocalPc, RemotePc, Name}}, From, S) ->
+handle_call({register_linkset, {LocalPc, RemotePc, Name}},
+				{FromPid, _FromRef}, S) ->
 	#su_state{linkset_tbl = Tbl} = S,
 	Ls = #slinkset{local_pc = LocalPc, remote_pc = RemotePc,
-		       name = Name, user_pid = From},
+		       name = Name, user_pid = FromPid},
 	case ets:insert_new(Tbl, Ls) of
 	    false ->
 		{reply, {error, ets_insert}, S};
@@ -119,18 +120,19 @@ handle_call({register_linkset, {LocalPc, RemotePc, Name}}, From, S) ->
 		{reply, ok, S}
 	end;
 
-handle_call({unregister_linkset, {Name}}, From, S) ->
+handle_call({unregister_linkset, {Name}}, {FromPid, _FromRef}, S) ->
 	#su_state{linkset_tbl = Tbl} = S,
 	ets:delete(Tbl, Name),
 	{reply, ok, S};
 
-handle_call({register_link, {LsName, Sls, Name}}, From, S) ->
+handle_call({register_link, {LsName, Sls, Name}},
+				{FromPid, _FromRef}, S) ->
 	#su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl} = S,
 	% check if linkset actually exists
-	case ets:loookup(LinksetTbl, LsName) of
+	case ets:lookup(LinksetTbl, LsName) of
 	    [#slinkset{}] ->
 		Link = #slink{name = Name, sls = Sls,
-			      user_pid = From, key = {LsName, Sls}},
+			      user_pid = FromPid, key = {LsName, Sls}},
 		case ets:insert_new(LinkTbl, Link) of
 		    false ->
 			{reply, {error, link_exists}, S};
@@ -144,13 +146,13 @@ handle_call({register_link, {LsName, Sls, Name}}, From, S) ->
 		{reply, {error, no_such_linkset}, S}
 	end;
 
-handle_call({unregister_link, {LsName, Sls}}, From, S) ->
+handle_call({unregister_link, {LsName, Sls}}, {FromPid, _FromRef}, S) ->
 	#su_state{link_tbl = LinkTbl} = S,
 	ets:delete(LinkTbl, {LsName, Sls}),
 	{reply, ok, S};
 
-handle_call({set_link_state, {LsName, Sls, State}}, From, S) ->
-	#su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl} = S,
+handle_call({set_link_state, {LsName, Sls, State}}, {FromPid, _}, S) ->
+	#su_state{link_tbl = LinkTbl} = S,
 	case ets:lookup(LinkTbl, {LsName, Sls}) of
 	    [] ->
 		{reply, {error, no_such_link}, S};

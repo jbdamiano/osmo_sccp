@@ -46,12 +46,12 @@
 % initialization code
 
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, []).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init(_Arg) ->
 	UserTbl = ets:new(sccp_user_tbl, [ordered_set, named_table,
 				       {keypos, #scu_record.ssn_pc}]),
-	#scu_state{user_table = UserTbl}.
+	{ok, #scu_state{user_table = UserTbl}}.
 
 % client side code
 
@@ -83,9 +83,9 @@ local_ssn_avail(Ssn, Pc) ->
 % server side code 
 
 % bind a {SSN, PC} tuple to the pid of the caller
-handle_call({bind_ssn, Ssn, Pc}, From, S) ->
+handle_call({bind_ssn, Ssn, Pc}, {FromPid, _FromRef}, S) ->
 	#scu_state{user_table = Tbl} = S,
-	NewRec = #scu_record{ssn_pc= {Ssn, Pc}, user_pid = From},
+	NewRec = #scu_record{ssn_pc= {Ssn, Pc}, user_pid = FromPid},
 	case ets:insert_new(Tbl, NewRec) of
 	    false ->
 		{reply, {error, ets_insert}, S};
@@ -94,9 +94,9 @@ handle_call({bind_ssn, Ssn, Pc}, From, S) ->
 	end;
 
 % unbind a {SSN, PC} tuple from the pid of the caller
-handle_call({unbind_ssn, Ssn, Pc}, From, S) ->
+handle_call({unbind_ssn, Ssn, Pc}, {FromPid, _FromRef}, S) ->
 	#scu_state{user_table = Tbl} = S,
-	DelRec = #scu_record{ssn_pc= {Ssn, Pc}, user_pid = From},
+	DelRec = #scu_record{ssn_pc= {Ssn, Pc}, user_pid = FromPid},
 	ets:delete_object(Tbl, DelRec),
 	{reply, ok, S}.
 
