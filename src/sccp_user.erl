@@ -90,6 +90,10 @@ handle_call({bind_ssn, Ssn, Pc}, {FromPid, _FromRef}, S) ->
 	    false ->
 		{reply, {error, ets_insert}, S};
 	    Error ->
+		% We need to trap the user Pid for EXIT
+		% in order to automatically remove any SSN if
+		% the user process dies
+		link(FromPid),
 		{reply, ok, S}
 	end;
 

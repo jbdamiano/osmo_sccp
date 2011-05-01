@@ -114,9 +114,10 @@ handle_call({register_linkset, {LocalPc, RemotePc, Name}},
 	    false ->
 		{reply, {error, ets_insert}, S};
 	    _ ->
-		% FIXME: We need to trap the user Pid for EXIT
+		% We need to trap the user Pid for EXIT
 		% in order to automatically remove any links/linksets if
 		% the user process dies
+		link(FromPid),
 		{reply, ok, S}
 	end;
 
@@ -137,9 +138,10 @@ handle_call({register_link, {LsName, Sls, Name}},
 		    false ->
 			{reply, {error, link_exists}, S};
 		    _ ->
-			% FIXME: We need to trap the user Pid for EXIT
+			% We need to trap the user Pid for EXIT
 			% in order to automatically remove any links if
 			% the user process dies
+			link(FromPid),
 			{reply, ok, S}
 		end;
 	    _ ->
