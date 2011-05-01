@@ -110,6 +110,12 @@ handle_cast(Info, S) ->
 				  {info, Info}, {state, S}]),
 	{noreply, S}.
 
+handle_info({'EXIT', Pid, Reason}, S) ->
+	#scu_state{user_table = Tbl} = S,
+	io:format("EXIT from Process ~p (~p), cleaning up tables~n",
+		  [Pid, Reason]),
+	ets:match_delete(Tbl, #scu_record{user_pid = Pid}),
+	{noreply, S};
 handle_info(Info, S) ->
 	error_logger:error_report(["unknown handle_info",
 				  {module, ?MODULE},

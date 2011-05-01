@@ -170,6 +170,13 @@ handle_cast(Info, S) ->
 				  {info, Info}, {state, S}]),
 	{noreply, S}.
 
+handle_info({'EXIT', Pid, Reason}, S) ->
+	io:format("EXIT from Process ~p (~p), cleaning up tables~n",
+		  [Pid, Reason]),
+	#su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl} = S,
+	ets:match_delete(LinksetTbl, #slinkset{user_pid = Pid}),
+	ets:match_delete(LinkTbl, #slink{user_pid = Pid}),
+	{noreply, S};
 handle_info(Info, S) ->
 	error_logger:error_report(["unknown handle_info",
 				  {module, ?MODULE},
