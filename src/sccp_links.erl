@@ -32,6 +32,8 @@
 % client functions, may internally talk to our sccp_user server
 -export([register_linkset/3, unregister_linkset/1]).
 -export([register_link/3, unregister_link/2, set_link_state/3]).
+-export([bind_service/2, unbind_service/1]).
+
 -export([get_pid_for_link/2, get_pid_for_dpc_sls/2, mtp3_tx/1,
 	 get_linkset_for_dpc/1, dump_all_links/0]).
 
@@ -53,9 +55,16 @@
 	links
 }).
 
+-record(service, {
+	name,
+	service_nr,
+	user_pid
+}).
+
 -record(su_state, {
 	linkset_tbl,
-	link_tbl
+	link_tbl,
+	service_tbl
 }).
 
 
@@ -67,12 +76,15 @@ start_link() ->
 init(_Arg) ->
 	LinksetTbl = ets:new(sccp_linksets, [ordered_set, named_table,
 					     {keypos, #slinkset.name}]),
+	ServiceTbl = ets:new(mtp3_services, [ordered_set, named_table,
+				{keypos, #service.service_nr}]),
 
 	% create a named table so we can query without reference directly
 	% within client/caller process
 	LinkTbl = ets:new(sccp_link_table, [ordered_set, named_table,
 					    {keypos, #slink.key}]),
-	{ok, #su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl}}.
+	{ok, #su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl,
+			service_tbl = ServiceTbl}}.
 
 % client side API
 
@@ -93,6 +105,14 @@ unregister_link(LinksetName, Sls) ->
 
 set_link_state(LinksetName, Sls, State) ->
 	gen_server:call(?MODULE, {set_link_state, {LinksetName, Sls, State}}).
+
+% bind a service (such as ISUP, SCCP) to the MTP3 link manager
+bind_service(ServiceNum, ServiceName) ->
+	gen_server:call(?MODULE, {bind_service, {ServiceNum, ServiceName}}).
+
+% unbind a service (such as ISUP, SCCP) from the MTP3 link manager
+unbind_service(ServiceNum) ->
+	gen_server:call(?MODULE, {unbind_service, {ServiceNum}}).
 
 % the lookup functions can directly use the ets named_table from within
 % the client process, no need to go through a synchronous IPC
@@ -126,6 +146,20 @@ get_pid_for_dpc_sls(Dpc, Sls) ->
 		get_pid_for_link(LinksetName, Sls)
 	end.
 
+% process a received message on an underlying link
+mtp3_rx(Mtp3 = #mtp3_msg{service_ind = Serv}) ->
+	case ets:lookup(mtp3_services, Serv) of
+	     [#service{user_pid = Pid}] ->
+		gen_server:cast(Pid,
+				osmo_util:make_prim('MTP', 'TRANSFER',
+						    indication, Mtp3));
+	    _ ->
+		% FIXME: send back some error message on MTP level
+		ok
+	end.
+
+
+% transmit a MTP3 message via any of the avaliable links for the DPC
 mtp3_tx(Mtp3 = #mtp3_msg{routing_label = RoutLbl}) ->
 	#mtp3_routing_label{dest_pc = Dpc, sig_link_sel = Sls} = RoutLbl,
 	% discover the link through which we shall send
@@ -228,7 +262,22 @@ handle_call({set_link_state, {LsName, Sls, State}}, {FromPid, _}, S) ->
 		NewLink = Link#slink{state = State},
 		ets:insert(LinkTbl, NewLink),
 		{reply, ok, S}
-	end.
+	end;
+
+handle_call({bind_service, {SNum, SName}}, {FromPid, _},
+	    #su_state{service_tbl = ServTbl} = S) ->
+	NewServ = #service{name = SName, service_nr = SNum,
+			   user_pid = FromPid},
+	case ets:insert_new(ServTbl, NewServ) of
+	    false ->
+		{reply, {error, ets_insert}, S};
+	    _ ->
+		{reply, ok, S}
+	end;
+handle_call({unbind_service, {SNum}}, {FromPid, _},
+	    #su_state{service_tbl = ServTbl} = S) ->
+	ets:delete(ServTbl, SNum),
+	{reply, ok, S}.
 
 handle_cast(Info, S) ->
 	error_logger:error_report(["unknown handle_cast",
