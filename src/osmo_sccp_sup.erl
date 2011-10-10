@@ -33,8 +33,8 @@ init(Args) ->
 		     permanent, 2000, worker, [sccp_scrc, sccp_codec, sccp_routing]},
 	UserChild = {sccp_user, {sccp_user, start_link, []},
 		     permanent, 2000, worker, [sccp_user]},
-	LinksChild = {sccp_links, {sccp_links, start_link, []},
-		     permanent, 2000, worker, [sccp_links]},
+	LinksChild = {ss7_links, {ss7_links, start_link, []},
+		     permanent, 2000, worker, [ss7_links]},
 	%ScrcChild = {sccp_sclc, {sccp_sclc, start_link, [Args]},
 	%	     permanent, 2000, worker, [sccp_sclc, sccp_codec]},
 	{ok,{{one_for_one,60,600}, [ScrcChild, UserChild, LinksChild]}}.
@@ -42,9 +42,9 @@ init(Args) ->
 % Add a m3ua link to this supervisor
 add_mtp_link(L=#sigtran_link{type = m3ua, name = Name,
 			   local = Local, remote = Remote}) ->
-	ChildName = list_to_atom("sccp_link_m3ua_" ++ Name),
-	ChildSpec = {ChildName, {sccp_link_m3ua, start_link, [L]},
-		     permanent, infinity, worker, [sccp_link_m3ua]},
+	ChildName = list_to_atom("ss7_link_m3ua_" ++ Name),
+	ChildSpec = {ChildName, {ss7_link_m3ua, start_link, [L]},
+		     permanent, infinity, worker, [ss7_link_m3ua]},
 	supervisor:start_child(?MODULE, ChildSpec);
 add_mtp_link([]) ->
 	ok;

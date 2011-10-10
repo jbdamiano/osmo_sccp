@@ -206,4 +206,4 @@ send_mtp_transfer_down(LoopDat, EncMsg) ->
 			 routing_label = Rlbl, payload = EncMsg},
 	MtpPrim = #primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 			     spec_name = request, parameters = Mtp3},
-	sccp_links:mtp3_tx(Mtp3).
+	ss7_links:mtp3_tx(Mtp3).

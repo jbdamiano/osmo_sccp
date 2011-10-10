@@ -17,7 +17,7 @@
 % You should have received a copy of the GNU Affero General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--module(sccp_links).
+-module(ss7_links).
 -behaviour(gen_server).
 
 -include_lib("osmo_ss7/include/mtp3.hrl").
@@ -74,14 +74,14 @@ start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], [{debug, [trace]}]).
 
 init(_Arg) ->
-	LinksetTbl = ets:new(sccp_linksets, [ordered_set, named_table,
+	LinksetTbl = ets:new(ss7_linksets, [ordered_set, named_table,
 					     {keypos, #slinkset.name}]),
 	ServiceTbl = ets:new(mtp3_services, [ordered_set, named_table,
 				{keypos, #service.service_nr}]),
 
 	% create a named table so we can query without reference directly
 	% within client/caller process
-	LinkTbl = ets:new(sccp_link_table, [ordered_set, named_table,
+	LinkTbl = ets:new(ss7_link_table, [ordered_set, named_table,
 					    {keypos, #slink.key}]),
 	{ok, #su_state{linkset_tbl = LinksetTbl, link_tbl = LinkTbl,
 			service_tbl = ServiceTbl}}.
@@ -118,7 +118,7 @@ unbind_service(ServiceNum) ->
 % the client process, no need to go through a synchronous IPC
 
 get_pid_for_link(LinksetName, Sls) ->
-	case ets:lookup(sccp_link_table, {LinksetName, Sls}) of
+	case ets:lookup(ss7_link_table, {LinksetName, Sls}) of
 	    [#slink{user_pid = Pid}] ->	
 		% FIXME: check the link state 
 		{ok, Pid};
@@ -128,7 +128,7 @@ get_pid_for_link(LinksetName, Sls) ->
 
 % Resolve linkset name directly connected to given point code
 get_linkset_for_dpc(Dpc) ->
-	Ret = ets:match_object(sccp_linksets,
+	Ret = ets:match_object(ss7_linksets,
 			       #slinkset{remote_pc = Dpc, _ = '_'}),
 	case Ret of
 	    [] ->
@@ -173,7 +173,7 @@ mtp3_tx(Mtp3 = #mtp3_msg{routing_label = RoutLbl}) ->
 	end.
 
 dump_all_links() ->
-	List = ets:tab2list(sccp_linksets),
+	List = ets:tab2list(ss7_linksets),
 	dump_linksets(List).
 
 dump_linksets([]) ->
@@ -190,7 +190,7 @@ dump_single_linkset(Sls) when is_record(Sls, slinkset) ->
 	dump_linkset_links(Name).
 
 dump_linkset_links(Name) ->
-	List = ets:match_object(sccp_link_table,
+	List = ets:match_object(ss7_link_table,
 				#slink{key={Name,'_'}, _='_'}),
 	dump_links(List).
 

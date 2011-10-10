@@ -17,7 +17,7 @@
 % You should have received a copy of the GNU Affero General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--module(sccp_link_ipa_client).
+-module(ss7_link_ipa_client).
 -author('Harald Welte <laforge@gnumonks.org>').
 -behavior(gen_server).
 
@@ -49,7 +49,7 @@ init(L = #sigtran_link{type = ipa_client, name = Name, linkset_name = LinksetNam
 		{user_fun, fun ipa_tx_to_user/2}, {user_args, self()}],
 	{ok, IpaPid} = ipa_core:start_link(Opts),
 	% FIXME: register this link with SCCP_SCRC
-	ok = sccp_link:register_link(LinksetName, Sls, Name),
+	ok = ss7_link:register_link(LinksetName, Sls, Name),
 	{ok, #loop_dat{ipa_pid = IpaPid, link = L}}.
 
 %	% instantiate SCCP routing instance
@@ -58,7 +58,7 @@ init(L = #sigtran_link{type = ipa_client, name = Name, linkset_name = LinksetNam
 
 
 set_link_state(#sigtran_link{linkset_name = LinksetName, sls = Sls}, State) ->
-	ok = sccp_links:set_link_state(LinksetName, Sls, State).
+	ok = ss7_links:set_link_state(LinksetName, Sls, State).
 
 scrc_tx_to_mtp(Prim, Args) ->
 	M3uaPid = Args,

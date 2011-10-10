@@ -17,7 +17,7 @@
 % You should have received a copy of the GNU Affero General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--module(sccp_link_m3ua).
+-module(ss7_link_m3ua).
 -author('Harald Welte <laforge@gnumonks.org>').
 -behavior(gen_server).
 
@@ -49,7 +49,7 @@ init(L = #sigtran_link{type = m3ua, name = Name, linkset_name = LinksetName,
 		{user_fun, fun m3ua_tx_to_user/2}, {user_args, self()}],
 	{ok, M3uaPid} = m3ua_core:start_link(Opts),
 	% FIXME: register this link with SCCP_SCRC
-	ok = sccp_links:register_link(LinksetName, Sls, Name),
+	ok = ss7_links:register_link(LinksetName, Sls, Name),
 	{ok, #loop_dat{m3ua_pid = M3uaPid, link = L}}.
 
 %	% instantiate SCCP routing instance
@@ -58,7 +58,7 @@ init(L = #sigtran_link{type = m3ua, name = Name, linkset_name = LinksetName,
 
 
 set_link_state(#sigtran_link{linkset_name = LinksetName, sls = Sls}, State) ->
-	ok = sccp_links:set_link_state(LinksetName, Sls, State).
+	ok = ss7_links:set_link_state(LinksetName, Sls, State).
 
 scrc_tx_to_mtp(Prim, Args) ->
 	M3uaPid = Args,
