@@ -20,6 +20,8 @@
 -module(sccp_links).
 -behaviour(gen_server).
 
+-include_lib("osmo_ss7/include/mtp3.hrl").
+
 % gen_fsm callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -30,7 +32,8 @@
 % client functions, may internally talk to our sccp_user server
 -export([register_linkset/3, unregister_linkset/1]).
 -export([register_link/3, unregister_link/2, set_link_state/3]).
--export([get_pid_for_link/2]).
+-export([get_pid_for_link/2, get_pid_for_dpc_sls/2, mtp3_tx/1,
+	 get_linkset_for_dpc/1, dump_all_links/0]).
 
 -record(slink, {
 	key,		% {linkset_name, sls}
@@ -59,10 +62,10 @@
 % initialization code
 
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], [{debug, [trace]}]).
 
 init(_Arg) ->
-	LinksetTbl = ets:new(sccp_linksets, [ordered_set,
+	LinksetTbl = ets:new(sccp_linksets, [ordered_set, named_table,
 					     {keypos, #slinkset.name}]),
 
 	% create a named table so we can query without reference directly
@@ -103,6 +106,69 @@ get_pid_for_link(LinksetName, Sls) ->
 		{error, no_such_link}
 	end.
 
+% Resolve linkset name directly connected to given point code
+get_linkset_for_dpc(Dpc) ->
+	Ret = ets:match_object(sccp_linksets,
+			       #slinkset{remote_pc = Dpc, _ = '_'}),
+	case Ret of
+	    [] ->
+		{error, undefined};
+	    [#slinkset{name=Name}|_Tail] ->
+		{ok, Name}
+	end.
+
+% resolve link-handler Pid for given (directly connected) point code/sls
+get_pid_for_dpc_sls(Dpc, Sls) ->
+	case get_linkset_for_dpc(Dpc) of
+	    {error, Err} ->
+		{error, Err};
+	    {ok, LinksetName} ->
+		get_pid_for_link(LinksetName, Sls)
+	end.
+
+mtp3_tx(Mtp3 = #mtp3_msg{routing_label = RoutLbl}) ->
+	#mtp3_routing_label{dest_pc = Dpc, sig_link_sel = Sls} = RoutLbl,
+	% discover the link through which we shall send
+	case get_pid_for_dpc_sls(Dpc, Sls) of
+	    {error, Error} ->
+		{error, Error};
+	    {ok, Pid} ->
+		    gen_server:cast(Pid,
+				osmo_util:make_prim('MTP', 'TRANSFER',
+						    request, Mtp3))
+	end.
+
+dump_all_links() ->
+	List = ets:tab2list(sccp_linksets),
+	dump_linksets(List).
+
+dump_linksets([]) ->
+	ok;
+dump_linksets([Head|Tail]) when is_record(Head, slinkset) ->
+	dump_single_linkset(Head),
+	dump_linksets(Tail).
+
+dump_single_linkset(Sls) when is_record(Sls, slinkset) ->
+	#slinkset{name = Name, local_pc = Lpc, remote_pc = Rpc,
+		  state = State} = Sls,
+	io:format("Linkset ~p, Local PC: ~p, Remote PC: ~p, State: ~p~n",
+		  [Name, Lpc, Rpc, State]),
+	dump_linkset_links(Name).
+
+dump_linkset_links(Name) ->
+	List = ets:match_object(sccp_link_table,
+				#slink{key={Name,'_'}, _='_'}),
+	dump_links(List).
+
+dump_links([]) ->
+	ok;
+dump_links([Head|Tail]) when is_record(Head, slink) ->
+	#slink{name = Name, sls = Sls, state = State} = Head,
+	io:format("  Link ~p, SLS: ~p, State: ~p~n",
+		  [Name, Sls, State]),
+	dump_links(Tail).
+
+
 % server side code
 
 handle_call({register_linkset, {LocalPc, RemotePc, Name}},
@@ -132,7 +198,7 @@ handle_call({register_link, {LsName, Sls, Name}},
 	% check if linkset actually exists
 	case ets:lookup(LinksetTbl, LsName) of
 	    [#slinkset{}] ->
-		Link = #slink{name = Name, sls = Sls,
+		Link = #slink{name = Name, sls = Sls, state = down,
 			      user_pid = FromPid, key = {LsName, Sls}},
 		case ets:insert_new(LinkTbl, Link) of
 		    false ->

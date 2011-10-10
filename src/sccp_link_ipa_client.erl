@@ -1,4 +1,4 @@
-% Osmocom adaptor to interface the M3UA core with osmo_sccp
+% Osmocom adaptor to interface the IPA core with osmo_sccp
 
 % (C) 2011 by Harald Welte <laforge@gnumonks.org>
 %
@@ -17,12 +17,12 @@
 % You should have received a copy of the GNU Affero General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
--module(sccp_link_m3ua).
+-module(sccp_link_ipa_client).
 -author('Harald Welte <laforge@gnumonks.org>').
 -behavior(gen_server).
 
 -include_lib("osmo_ss7/include/osmo_util.hrl").
--include_lib("osmo_ss7/include/m3ua.hrl").
+%-include_lib("osmo_ss7/include/ipa.hrl").
 -include_lib("osmo_ss7/include/sccp.hrl").
 
 -include("osmo_sccp.hrl").
@@ -32,29 +32,29 @@
 -export([handle_cast/2]).
 
 -record(loop_dat, {
-	 m3ua_pid,
+	 ipa_pid,
 	 link
 	}).
 
 start_link(Args) ->
-	gen_server:start_link(?MODULE, Args, [{debug, [trace]}]).
+	gen_server:start_link(?MODULE, Args, []).
 
-init(L = #sigtran_link{type = m3ua, name = Name, linkset_name = LinksetName,
+init(L = #sigtran_link{type = ipa_client, name = Name, linkset_name = LinksetName,
 		       sls = Sls, local = Local, remote = Remote}) ->
 	#sigtran_peer{ip = LocalIp, port = LocalPort} = Local,
 	#sigtran_peer{ip = RemoteIp, port = RemotePort} = Remote,
-	% start the M3UA link to the SG
+	% start the IPA link to the SG
 	Opts = [{user_pid, self()}, {sctp_remote_ip, RemoteIp},
 		{sctp_remote_port, RemotePort}, {sctp_local_port, LocalPort},
-		{user_fun, fun m3ua_tx_to_user/2}, {user_args, self()}],
-	{ok, M3uaPid} = m3ua_core:start_link(Opts),
+		{user_fun, fun ipa_tx_to_user/2}, {user_args, self()}],
+	{ok, IpaPid} = ipa_core:start_link(Opts),
 	% FIXME: register this link with SCCP_SCRC
-	ok = sccp_links:register_link(LinksetName, Sls, Name),
-	{ok, #loop_dat{m3ua_pid = M3uaPid, link = L}}.
+	ok = sccp_link:register_link(LinksetName, Sls, Name),
+	{ok, #loop_dat{ipa_pid = IpaPid, link = L}}.
 
 %	% instantiate SCCP routing instance
 %	{ok, ScrcPid} = sccp_scrc:start_link([{mtp_tx_action, {callback_fn, fun scrc_tx_to_mtp/2, M3uaPid}}]),
-%	loop(#loop_dat{m3ua_pid = M3uaPid, scrc_pid = ScrcPid}).
+%	loop(#loop_dat{ipa_pid = M3uaPid, scrc_pid = ScrcPid}).
 
 
 set_link_state(#sigtran_link{linkset_name = LinksetName, sls = Sls}, State) ->
@@ -64,45 +64,39 @@ scrc_tx_to_mtp(Prim, Args) ->
 	M3uaPid = Args,
 	gen_fsm:send_event(M3uaPid, Prim).
 
-% Callback that we pass to the m3ua_core, which it will call when it wants to
+% Callback that we pass to the ipa_core, which it will call when it wants to
 % send a primitive up the stack to SCCP
-m3ua_tx_to_user(Prim, Args) ->
+ipa_tx_to_user(Prim, Args) ->
 	UserPid = Args,
 	gen_server:cast(UserPid, Prim).
 
-handle_cast(P = #primitive{subsystem = 'MTP', gen_name = 'TRANSFER', spec_name = request}, L) ->
-	scrc_tx_to_mtp(P, L#loop_dat.m3ua_pid),
-	{noreply, L};
-% This is what we receive from m3ua_tx_to_user/2
+% This is what we receive from ipa_tx_to_user/2
 handle_cast(#primitive{subsystem = 'M', gen_name = 'SCTP_ESTABLISH', spec_name = confirm}, L) ->
 	io:format("~p: SCTP_ESTABLISH.ind -> ASP_UP.req~n", [?MODULE]),
-	gen_fsm:send_event(L#loop_dat.m3ua_pid, osmo_util:make_prim('M','ASP_UP',request)),
+	gen_fsm:send_event(L#loop_dat.ipa_pid, osmo_util:make_prim('M','ASP_UP',request)),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_UP', spec_name = confirm}, L) ->
 	io:format("~p: ASP_UP.ind -> ASP_ACTIVE.req~n", [?MODULE]),
-	set_link_state(L#loop_dat.link, up),
-	gen_fsm:send_event(L#loop_dat.m3ua_pid, osmo_util:make_prim('M','ASP_ACTIVE',request)),
+	set_link_state(L, up),
+	gen_fsm:send_event(L#loop_dat.ipa_pid, osmo_util:make_prim('M','ASP_ACTIVE',request)),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_ACTIVE', spec_name = confirm}, L) ->
 	io:format("~p: ASP_ACTIVE.ind - M3UA now active and ready~n", [?MODULE]),
-	set_link_state(L#loop_dat.link, active),
+	set_link_state(L, active),
 	%tx_sccp_udt(L#loop_dat.scrc_pid),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_DOWN'}, L) ->
 	io:format("~p: ASP_DOWN.ind~n", [?MODULE]),
-	set_link_state(L#loop_dat.link, down),
+	set_link_state(L, down),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_INACTIVE'}, L) ->
 	io:format("~p: ASP_DOWN.ind~n", [?MODULE]),
-	set_link_state(L#loop_dat.link, inactive),
+	set_link_state(L, inactive),
 	{noreply, L};
 handle_cast(P, L) ->
 	io:format("~p: Ignoring M3UA prim ~p~n", [?MODULE, P]),
 	{noreply, L}.
 
-terminate(Reason, _S) ->
-	io:format("terminating ~p with reason ~p", [?MODULE, Reason]),
-	ok.
 
 tx_sccp_udt(ScrcPid) ->
 	CallingP = #sccp_addr{ssn = ?SCCP_SSN_MSC, point_code = osmo_util:pointcode2int(itu, {1,2,2})},

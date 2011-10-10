@@ -28,18 +28,25 @@
 
 pointcode_is_local(Pc) ->
 	% FIXME: use SCRC routing information
-	true.
+	LocalPc = osmo_util:pointcode2int(itu, {1,2,4}),
+	case Pc of
+		LocalPc ->
+			true;
+		_ ->
+			false
+	end.
 
 % local helper function
 msg_return_or_cr_refusal(SccpMsg, RetCause, RefCause) ->
 	case sccp_codec:is_connectionless(SccpMsg) of
-	   false ->
+	   true ->
 		% if CL -> message return procedure
 		message_return(SccpMsg, RetCause);
-	   true ->
+	   false ->
 		% if CR -> connection refusal
 		connection_refusal(SccpMsg, RefCause)
-	end.
+	end,
+	{error, routing}.
 
 % local outgoing CL or CR message
 route_local_out(SccpMsg) when is_record(SccpMsg, sccp_msg) ->
@@ -140,8 +147,19 @@ route_local_out_action(2, SccpMsg, CalledParty) ->
 % Acccording to 2.3.2 Action (3)
 route_local_out_action(3, SccpMsg, CalledParty) ->
 	% The same actions as Action (1) apply, without checking the SSN.
-	% FIXME
-	ok;
+	#sccp_addr{global_title = Gt, point_code = Pc} = CalledParty,
+	case pointcode_is_local(Pc) of
+	    true ->
+		% pass to either SCOC or SCLC
+		{local, SccpMsg};
+	    false ->
+		% If the DPC is not the node itself and the remote DPC, SCCP
+		% and SSN are available, then the MTP-TRANSFER request
+		% primitive is invoked unless the compatibility test returns
+		% the message to SCLC or unless the message is discarded by the
+		% traffic limitation mechanism;
+		{remote, SccpMsg}
+	end;
 
 % Acccording to 2.3.2 Action (4)
 route_local_out_action(4, SccpMsg, CalledParty) ->

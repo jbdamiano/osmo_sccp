@@ -20,26 +20,30 @@
 -module(osmo_sccp_sup).
 -behavior(supervisor).
 
--export([start_link/0]).
+-export([start_link/0, add_mtp_link/1]).
 -export([init/1]).
 
 -include("osmo_sccp.hrl").
 
 start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+	supervisor:start_link({local, ?MODULE}, ?MODULE, [{debug, [trace]}]).
 
 init(Args) ->
 	ScrcChild = {sccp_scrc, {sccp_scrc, start_link, [Args]},
-		     permanent, 2000, worker, [sccp_scrc, sccp_codec]},
-	ScrcChild = {sccp_sclc, {sccp_sclc, start_link, [Args]},
-		     permanent, 2000, worker, [sccp_sclc, sccp_codec]},
-	{ok,{{one_for_one,60,600}, [ScrcChild|SclcChild]}}.
+		     permanent, 2000, worker, [sccp_scrc, sccp_codec, sccp_routing]},
+	UserChild = {sccp_user, {sccp_user, start_link, []},
+		     permanent, 2000, worker, [sccp_user]},
+	LinksChild = {sccp_links, {sccp_links, start_link, []},
+		     permanent, 2000, worker, [sccp_links]},
+	%ScrcChild = {sccp_sclc, {sccp_sclc, start_link, [Args]},
+	%	     permanent, 2000, worker, [sccp_sclc, sccp_codec]},
+	{ok,{{one_for_one,60,600}, [ScrcChild, UserChild, LinksChild]}}.
 
 % Add a m3ua link to this supervisor
-add_mtp_link(#sigtran_link{type = m3ua, name = Name,
+add_mtp_link(L=#sigtran_link{type = m3ua, name = Name,
 			   local = Local, remote = Remote}) ->
 	ChildName = list_to_atom("sccp_link_m3ua_" ++ Name),
-	ChildSpec = {ChildName, {sccp_link_m3ua, start_link, [Args]},
+	ChildSpec = {ChildName, {sccp_link_m3ua, start_link, [L]},
 		     permanent, infinity, worker, [sccp_link_m3ua]},
 	supervisor:start_child(?MODULE, ChildSpec);
 add_mtp_link([]) ->
