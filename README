@@ -1,0 +1,56 @@
+= Osmocom Erlang SCCP implementation =
+
+This is a currently still incomplete Erlang SCCP implementation which
+is part of the overall Osmocom project (http://osmocom.org/)
+
+The aim is to fully implement SCCP for connectionless and connection-
+oriented services, including global title translation.  It should be
+possible to use this as both STP or SCP, or even as an ITP/SGW.
+
+
+== Configuration ==
+
+The SCCP stack is configured via the regular OTP application configuration
+file.
+
+
+=== Signalling linksets and links ===
+
+The MTP functionality can be provided by either M3UA or a classic MTP3 (over
+M2UA or real MTP2).
+
+A linkset is a group of links, all connected to the same destination (point
+code).
+
+Each signalling linkset has to be configured in the config file, providing
+the following parameters:
+ * linkset name
+ * local point code
+ * remote point code
+
+Each signalling link has to be configured in the config file, providing the
+following parameters:
+ * linkset name
+ * SLS
+ * IP address and port information (for M3UA)
+
+The sccp_links module keeps track of signalling linksets and links by means of
+ets tables.  It maintains a record of the Erlang process pid responsible for
+each respective link.
+
+== Architecture ==
+
+osmo_sccp_app starts osmo_sccp_sup, which in turn starts the individual signalling
+links through the respective signalling link provider modules.
+
+It also starts sccp_scrc (the SCCP routing) 
+
+One sccp_scoc instance will be started for each SCCP connection.
+
+== Implementing a SCCP-user ==
+
+== Implementing a MTP provider for SCCP ==
+
+This section outlines how to write a MTP transport for the SCCP stack.
+
+FIXME

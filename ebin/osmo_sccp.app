@@ -8,6 +8,8 @@
 			sccp_link_ipa_client,
 			sccp_link_m3ua,
 			sccp_routing,
+			sccp_scrc,
+			sccp_scoc,
 			sccp_user
 		]},
 	 {registered, [osmo_sccp_app]},
