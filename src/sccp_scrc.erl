@@ -58,6 +58,7 @@ init(InitPropList) ->
 	LoopData = #scrc_state{user_pid = UserPid, next_local_ref = 0},
 	TableRef = ets:new(scoc_by_ref, [set]),
 	put(scoc_by_ref, TableRef),
+	ok = ss7_links:bind_service(?MTP3_SERV_SCCP, "osmo_sccp"),
 	{ok, idle, LoopData}.
 
 
@@ -91,7 +92,7 @@ is_cr_or_connless(SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	end.
 
 % deliver message to local SCOC or SCLC
-deliver_to_scoc_sclc(LoopDat, Msg) when is_record(Msg, sccp_msg) ->
+deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg) ->
 	case Msg of
 		% special handling for CR message here in SCRC
 		#sccp_msg{msg_type = ?SCCP_MSGT_CR} ->
@@ -108,12 +109,16 @@ deliver_to_scoc_sclc(LoopDat, Msg) when is_record(Msg, sccp_msg) ->
 			IsConnLess = sccp_codec:is_connectionless(Msg),
 			case IsConnLess of
 				true ->
-					% it would be more proper to send them via SCLC ??
-					%gen_fsm:send(sccp_sclc, ??
-					UserPid = LoopDat#scrc_state.user_pid,
-					% FIXME: N-NOTICE.ind for NOTICE 
-					UserPrim = osmo_util:make_prim('N','UNITDATA', indication, Msg),
-					UserPid ! {sccp, UserPrim};
+					case UserPid of
+					    undefined ->
+						io:format("CL message to unequipped SSN~n");
+					    _ ->
+						% it would be more proper to send them via SCLC ??
+						%gen_fsm:send(sccp_sclc, ??
+						% FIXME: N-NOTICE.ind for NOTICE 
+						UserPrim = osmo_util:make_prim('N','UNITDATA', indication, Msg),
+						UserPid ! {sccp, UserPrim}
+					end;
 				false ->
 					% connection oriented messages need to go via SCOC instance
 					#sccp_msg{parameters = Opts} = Msg,
@@ -154,11 +159,11 @@ idle(P= #primitive{subsystem = 'N', gen_name = 'UNITDATA',
 idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 		spec_name = indication, parameters = Params}, LoopDat) ->
 	case sccp_routing:route_mtp3_sccp_in(Params) of
-		{remote} ->
+		{remote, SccpMsg} ->
 			% routing has taken care of it 
 			LoopDat1 = LoopDat;
-		{local, SccpMsg, _} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg)
+		{local, SccpMsg, UserPid} ->
+			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg, UserPid)
 	end,
 	{next_state, idle, LoopDat1};
 idle({sclc_scrc_connless_msg, SccpMsg}, LoopDat) ->
@@ -168,8 +173,8 @@ idle({sclc_scrc_connless_msg, SccpMsg}, LoopDat) ->
 			LoopDat1 = LoopDat;
 		{error, _} ->
 			LoopDat1 = LoopDat;
-		{local, SccpMsg2} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2)
+		{local, SccpMsg2, UserPid} ->
+			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
 	end,
 	{next_state, idle, LoopDat};
 % connection oriented messages like N-DATA.req from user

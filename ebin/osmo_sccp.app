@@ -4,9 +4,6 @@
 	 {modules, [	osmo_sccp,
 			osmo_sccp_app,
 			osmo_sccp_sup,
-			ss7_links,
-			ss7_link_ipa_client,
-			ss7_link_m3ua,
 			sccp_routing,
 			sccp_scrc,
 			sccp_scoc,
@@ -14,7 +11,7 @@
 		]},
 	 {registered, [osmo_sccp_app]},
 	 {mod, {osmo_sccp_app, []}},
-	 {applications, []},
+	 {applications, [osmo_ss7]},
 	 {env, [
 	  ]}
 ]}.

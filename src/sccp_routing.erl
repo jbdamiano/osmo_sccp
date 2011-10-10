@@ -100,11 +100,11 @@ route_local_out_action(1, SccpMsg, CalledParty) ->
 	case pointcode_is_local(Pc) of
 	    true ->
 		% c) procedures 2.3.1, item 2) are folloed
-		case sccp_user:local_ssn_avail(Ssn, Pc) of
-		    true ->
+		case sccp_user:pid_for_ssn(Ssn, Pc) of
+		    {ok, UserPid} ->
 			% pass to either SCOC or SCLC
-			{local, SccpMsg};
-		    false ->
+			{local, SccpMsg, UserPid};
+		    {error, _Error} ->
 			% message return / connection refusal
 			msg_return_or_cr_refusal(SccpMsg,
 						 ?SCCP_CAUSE_RET_UNEQUIP_USER,
@@ -134,7 +134,7 @@ route_local_out_action(2, SccpMsg, CalledParty) ->
 		    true ->
 			% message is passed, based on the message type, to
 			% either SCOC or SCLC;
-			{local, SccpMsg};
+			{local, SccpMsg, undefined};
 		    false ->
 			% MTP-TRANSFER request primitive is invoked unless the
 			% compatibility test returns the message to SCLC or
@@ -151,7 +151,8 @@ route_local_out_action(3, SccpMsg, CalledParty) ->
 	case pointcode_is_local(Pc) of
 	    true ->
 		% pass to either SCOC or SCLC
-		{local, SccpMsg};
+		% theoretic case, as we only enter Action(3) for remote DPC
+		{local, SccpMsg, undefined};
 	    false ->
 		% If the DPC is not the node itself and the remote DPC, SCCP
 		% and SSN are available, then the MTP-TRANSFER request
@@ -178,7 +179,7 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 		case sccp_user:pid_for_ssn(Ssn, Pc) of
 		    {ok, UserPid} ->
 			% forward to SCOC/SCLC
-			{local, SccpMsg, Mtp3Msg};
+			{local, SccpMsg, UserPid};
 		    {error, Error} ->
 			% invoke connection refusal (if CR) or message return
 			msg_return_or_cr_refusal(SccpMsg,
@@ -207,12 +208,12 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	% FIXME: handle UDTS/XUDTS/LUDTS messages (RI=0 check) of C.1/Q.714 (1/12)
 	% FIXME: handle translation already performed == yes) case of C.1/Q.714 (1/12)
 	route_main(SccpMsg),
-	{remote}.
+	{remote, SccpMsg}.
 
 
 % CR or connectionless message, coming in from MTP
 % return values
-%	{local, SccpMsg, Mtp3Msg}
+%	{local, SccpMsg, UserPid}
 %	{remote}
 route_mtp3_sccp_in(Mtp3Msg) when is_record(Mtp3Msg, mtp3_msg) ->
 	{ok, Msg} = sccp_codec:parse_sccp_msg(Mtp3Msg#mtp3_msg.payload),
@@ -225,7 +226,7 @@ route_mtp3_sccp_in(Mtp3Msg) when is_record(Mtp3Msg, mtp3_msg) ->
 		    true ->
 			route_cr_connless(Mtp3Msg, Msg);
 		    false ->
-			{local, Msg, Mtp3Msg}
+			{local, Msg, undefined}
 		end
 	end.
 
