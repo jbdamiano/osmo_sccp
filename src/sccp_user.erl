@@ -32,7 +32,8 @@
 -export([start_link/0]).
 
 % client functions, may internally talk to our sccp_user server
--export([bind_ssn/2, unbind_ssn/2, pid_for_ssn/2, local_ssn_avail/2]).
+-export([bind_ssn/2, unbind_ssn/2, pid_for_ssn/2, local_ssn_avail/2,
+	 dump/0]).
 
 -record(scu_state, {
 	user_table
@@ -79,6 +80,18 @@ local_ssn_avail(Ssn, Pc) ->
 	    _ ->
 		false
 	end.
+
+dump() ->
+	List = ets:tab2list(sccp_user_tbl),
+	io:format("Registered SCCP subsystems:~n"),
+	dump(List).
+
+dump([]) ->
+	ok;
+dump([Head|Tail]) when is_record(Head, scu_record) ->
+	#scu_record{ssn_pc = {Ssn, Pc}, user_pid = Pid} = Head,
+	io:format("  Pointcode ~p, SSN ~p, Pid ~p~n", [Pc,Ssn,Pid]),
+	dump(Tail).
 
 % server side code 
 

@@ -7,7 +7,8 @@
 			sccp_routing,
 			sccp_scrc,
 			sccp_scoc,
-			sccp_user
+			sccp_user,
+			sccp_ssn_dump
 		]},
 	 {registered, [osmo_sccp_app]},
 	 {mod, {osmo_sccp_app, []}},
