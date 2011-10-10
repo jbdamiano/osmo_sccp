@@ -70,6 +70,9 @@ m3ua_tx_to_user(Prim, Args) ->
 	UserPid = Args,
 	gen_server:cast(UserPid, Prim).
 
+handle_cast(P = #primitive{subsystem = 'MTP', gen_name = 'TRANSFER', spec_name = request}, L) ->
+	scrc_tx_to_mtp(P, L#loop_dat.m3ua_pid),
+	{noreply, L};
 % This is what we receive from m3ua_tx_to_user/2
 handle_cast(#primitive{subsystem = 'M', gen_name = 'SCTP_ESTABLISH', spec_name = confirm}, L) ->
 	io:format("~p: SCTP_ESTABLISH.ind -> ASP_UP.req~n", [?MODULE]),
@@ -77,21 +80,21 @@ handle_cast(#primitive{subsystem = 'M', gen_name = 'SCTP_ESTABLISH', spec_name =
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_UP', spec_name = confirm}, L) ->
 	io:format("~p: ASP_UP.ind -> ASP_ACTIVE.req~n", [?MODULE]),
-	set_link_state(L, up),
+	set_link_state(L#loop_dat.link, up),
 	gen_fsm:send_event(L#loop_dat.m3ua_pid, osmo_util:make_prim('M','ASP_ACTIVE',request)),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_ACTIVE', spec_name = confirm}, L) ->
 	io:format("~p: ASP_ACTIVE.ind - M3UA now active and ready~n", [?MODULE]),
-	set_link_state(L, active),
+	set_link_state(L#loop_dat.link, active),
 	%tx_sccp_udt(L#loop_dat.scrc_pid),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_DOWN'}, L) ->
 	io:format("~p: ASP_DOWN.ind~n", [?MODULE]),
-	set_link_state(L, down),
+	set_link_state(L#loop_dat.link, down),
 	{noreply, L};
 handle_cast(#primitive{subsystem = 'M', gen_name = 'ASP_INACTIVE'}, L) ->
 	io:format("~p: ASP_DOWN.ind~n", [?MODULE]),
-	set_link_state(L, inactive),
+	set_link_state(L#loop_dat.link, inactive),
 	{noreply, L};
 handle_cast(P, L) ->
 	io:format("~p: Ignoring M3UA prim ~p~n", [?MODULE, P]),
