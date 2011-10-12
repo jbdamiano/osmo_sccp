@@ -56,14 +56,20 @@ init(_Arg) ->
 
 % client side code
 
-bind_ssn(Ssn, Pc) ->
-	gen_server:call(?MODULE, {bind_ssn, Ssn, Pc}).
+bind_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
+	gen_server:call(?MODULE, {bind_ssn, Ssn, Pc});
+bind_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
+	PcInt = osmo_util:pointcode2int(Pc),
+	bind_ssn(Ssn, PcInt).
 
-unbind_ssn(Ssn, Pc) ->
-	gen_server:call(?MODULE, {unbind_ssn, Ssn, Pc}).
+unbind_ssn(Ssn, Pc) when is_integer(Pc) ->
+	gen_server:call(?MODULE, {unbind_ssn, Ssn, Pc});
+unbind_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
+	PcInt = osmo_util:pointcode2int(Pc),
+	unbind_ssn(Ssn, PcInt).
 
 % determine the pid registered for a given {Ssn, PC}
-pid_for_ssn(Ssn, Pc) ->
+pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 	% as this is only a read access, we read the ets table directly
 	% rather than going through call/2
 	case ets:lookup(sccp_user_tbl, {Ssn, Pc}) of
@@ -71,15 +77,23 @@ pid_for_ssn(Ssn, Pc) ->
 		{ok, UserPid};
 	    _ ->
 		{error, no_such_ssn}
-	end.
+	end;
+pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
+	PcInt = osmo_util:pointcode2int(Pc),
+	pid_for_ssn(Ssn, PcInt).
 
-local_ssn_avail(Ssn, Pc) ->
+
+local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 	case pid_for_ssn(Ssn, Pc) of
 	    {ok, UserPid} ->
 		true;
 	    _ ->
 		false
-	end.
+	end;
+local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
+	PcInt = osmo_util:pointcode2int(Pc),
+	local_ssn_avail(Ssn, Pc).
+
 
 dump() ->
 	List = ets:tab2list(sccp_user_tbl),
