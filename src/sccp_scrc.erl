@@ -149,33 +149,34 @@ idle(P = #primitive{subsystem = 'N', gen_name = 'CONNECT',
 idle(P= #primitive{subsystem = 'N', gen_name = 'UNITDATA',
 		   spec_name = request, parameters = Params}, LoopDat) ->
 	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
-	% FIXME: implement XUDT / LUDT support
-	% encode the actual SCCP message
-	EncMsg = sccp_codec:encode_sccp_msgt(?SCCP_MSGT_UDT, Params),
-	% generate a MTP-TRANSFER.req primitive to the lower layer
-	send_mtp_transfer_down(LoopDat, EncMsg),
-	{next_state, idle, LoopDat};
+	SccpMsg = #sccp_msg{msg_type = ?SCCP_MSGT_UDT, parameters = Params},
+	case sccp_routing:route_local_out(SccpMsg) of
+		{remote, SccpMsg2, LsName} ->
+			% FIXME: get to MTP-TRANSFER.req
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
+			% generate a MTP-TRANSFER.req primitive to the lower layer
+			send_mtp_transfer_down(LoopDat, M3),
+			LoopDat1 = LoopDat;
+		{local, SccpMsg2, UserPid} ->
+			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
+	end,
+	{next_state, idle, LoopDat1};
+
 % MTP-TRANSFER.ind from lower layer is passed into SCRC
 idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 		spec_name = indication, parameters = Params}, LoopDat) ->
 	case sccp_routing:route_mtp3_sccp_in(Params) of
-		{remote, SccpMsg} ->
-			% routing has taken care of it 
+		{remote, SccpMsg2, LsName} ->
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
+			% generate a MTP-TRANSFER.req primitive to the lower layer
+			send_mtp_transfer_down(LoopDat, M3),
 			LoopDat1 = LoopDat;
 		{local, SccpMsg, UserPid} ->
 			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg, UserPid)
 	end,
 	{next_state, idle, LoopDat1};
 idle({sclc_scrc_connless_msg, SccpMsg}, LoopDat) ->
-	case sccp_routing:route_local_out(SccpMsg) of
-		{remote, SccpMsg2} ->
-			% FIXME: get to MTP-TRANSFER.req
-			LoopDat1 = LoopDat;
-		{error, _} ->
-			LoopDat1 = LoopDat;
-		{local, SccpMsg2, UserPid} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
-	end,
+	% FIXME: see above, N-UNITDATA.req from user
 	{next_state, idle, LoopDat};
 % connection oriented messages like N-DATA.req from user
 idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION-MSG',
@@ -204,11 +205,33 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 	send_mtp_transfer_down(LoopDat, EncMsg),
 	{next_state, idle, LoopDat}.
 
-send_mtp_transfer_down(LoopDat, EncMsg) ->
-	Rlbl = #mtp3_routing_label{sig_link_sel = 0, origin_pc = 123, dest_pc = 456},
-	Mtp3 = #mtp3_msg{network_ind = ?MTP3_NETIND_INTERNATIONAL,
-			 service_ind = ?MTP3_SERV_SCCP,
-			 routing_label = Rlbl, payload = EncMsg},
-	MtpPrim = #primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
-			     spec_name = request, parameters = Mtp3},
+send_mtp_transfer_down(LoopDat, Mtp3) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3).
+
+create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
+	CalledParty = proplists:get_value(called_party_addr,
+					  SccpMsg#sccp_msg.parameters),
+	% we _have_ to have a destination point code here
+	Dpc = CalledParty#sccp_addr.point_code,
+	case Dpc of
+	    undefined ->
+		{error, dpc_undefined};
+	    _ ->
+		Opc = sccp_routing:select_opc(SccpMsg, LsName),
+		case Opc of
+		    undefined ->
+			{error, opc_undefined};
+		    _ ->
+			% FIXME: implement XUDT / LUDT support
+			SccpEnc = sccp_codec:encode_sccp_msg(SccpMsg),
+			% FIXME: select sls at random 
+			M3R = #mtp3_routing_label{sig_link_sel = 0,
+				  origin_pc = Opc,
+				  dest_pc = Dpc},
+			M3 = #mtp3_msg{network_ind = ?MTP3_NETIND_INTERNATIONAL,
+				       service_ind = ?MTP3_SERV_SCCP,
+				       routing_label = M3R,
+				       payload = SccpEnc},
+			{ok, M3}
+		end
+	end.

@@ -24,17 +24,10 @@
 -include_lib("osmo_ss7/include/sccp.hrl").
 -include_lib("osmo_ss7/include/mtp3.hrl").
 
--export([route_mtp3_sccp_in/1, route_local_out/1]).
+-export([route_mtp3_sccp_in/1, route_local_out/1, select_opc/2]).
 
-pointcode_is_local(Pc) ->
-	% FIXME: use SCRC routing information
-	LocalPc = osmo_util:pointcode2int(itu, {1,2,4}),
-	case Pc of
-		LocalPc ->
-			true;
-		_ ->
-			false
-	end.
+pointcode_is_local(Pc) when is_integer(Pc) ->
+	ss7_links:is_pc_local(Pc).
 
 % local helper function
 msg_return_or_cr_refusal(SccpMsg, RetCause, RefCause) ->
@@ -94,6 +87,30 @@ route_local_out(SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	end,
 	route_local_out_action(Action, SccpMsg, CalledParty).
 
+% select Originating Point Code for given (local_out) SCCP Msg
+select_opc(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
+	% first try to find the Calling Party as specified by user
+	case proplists:get_value(calling_party_addr,
+				 SccpMsg#sccp_msg.parameters) of
+	    undefined ->
+		% no calling party: auto selection
+		select_opc_auto(SccpMsg, LsName);
+	    CallingParty ->
+		case CallingParty#sccp_addr.point_code of
+		    % calling party has no point code: auto selection
+		    undefined ->
+			select_opc_auto(SccpMsg, LsName);
+		    Opc ->
+			% calling party has point code: use it
+			Opc
+		end
+	end.
+
+select_opc_auto(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
+	% use SS7 link management to determine Opc
+	ss7_links:get_opc_for_linkset(LsName).
+
+
 % Acccording to 2.3.2 Action (1)
 route_local_out_action(1, SccpMsg, CalledParty) ->
 	#sccp_addr{global_title = Gt, ssn = Ssn, point_code = Pc} = CalledParty,
@@ -116,7 +133,8 @@ route_local_out_action(1, SccpMsg, CalledParty) ->
 		% primitive is invoked unless the compatibility test returns
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
-		{remote, SccpMsg}
+		LsName = ss7_routes:route_dpc(Pc),
+		{remote, SccpMsg, LsName}
 	end;
 
 % Acccording to 2.3.2 Action (2)
@@ -140,7 +158,8 @@ route_local_out_action(2, SccpMsg, CalledParty) ->
 			% compatibility test returns the message to SCLC or
 			% unless the message is discarded by the traffic
 			% limitation mechanism
-			{remote, SccpMsg}
+			LsName = ss7_routes:route_dpc(Dpc),
+			{remote, SccpMsg, LsName}
 		end
 	end;
 
@@ -159,7 +178,8 @@ route_local_out_action(3, SccpMsg, CalledParty) ->
 		% primitive is invoked unless the compatibility test returns
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
-		{remote, SccpMsg}
+		LsName = ss7_routes:route_dpc(Pc),
+		{remote, SccpMsg, LsName}
 	end;
 
 % Acccording to 2.3.2 Action (4)
@@ -208,6 +228,7 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	% FIXME: handle UDTS/XUDTS/LUDTS messages (RI=0 check) of C.1/Q.714 (1/12)
 	% FIXME: handle translation already performed == yes) case of C.1/Q.714 (1/12)
 	route_main(SccpMsg),
+	%LsName = ss7_routes:route_dpc(),
 	{remote, SccpMsg}.
 
 
