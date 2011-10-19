@@ -19,7 +19,7 @@
 
 -module(sccp_scrc).
 -behaviour(gen_fsm).
--export([start_link/1, init/1, terminate/3, idle/2]).
+-export([start_link/1, init/1, terminate/3, idle/2, handle_info/3]).
 
 -include_lib("osmo_ss7/include/osmo_util.hrl").
 -include_lib("osmo_ss7/include/sccp.hrl").
@@ -235,3 +235,22 @@ create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
 			{ok, M3}
 		end
 	end.
+
+% FIXME: the MTP3 code should net send a gen_serve:cast ?!?
+handle_info({'$gen_cast', P=#primitive{}}, State, LoopDat) ->
+	#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
+		spec_name = indication, parameters = Mtp3} = P,
+	{ok, SccpMsg} = sccp_codec:parse_sccp_msg(Mtp3#mtp3_msg.payload),
+	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
+	case sccp_routing:route_local_out(SccpMsg) of
+		{remote, SccpMsg2, LsName} ->
+			% FIXME: get to MTP-TRANSFER.req
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
+			% generate a MTP-TRANSFER.req primitive to the lower layer
+			send_mtp_transfer_down(LoopDat, M3),
+			LoopDat1 = LoopDat;
+		{local, SccpMsg2, UserPid} ->
+			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
+	end,
+	{next_state, idle, LoopDat1}.
+
