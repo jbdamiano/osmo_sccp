@@ -56,6 +56,10 @@ init(_Arg) ->
 
 % client side code
 
+bind_ssn(Ssn) when is_integer(Ssn) ->
+	gen_server:call(?MODULE, {bind_ssn, Ssn, undefined}).
+bind_ssn(Ssn, undefined) when is_integer(Ssn) ->
+	gen_server:call(?MODULE, {bind_ssn, Ssn, undefined});
 bind_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 	gen_server:call(?MODULE, {bind_ssn, Ssn, Pc});
 bind_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
@@ -76,7 +80,13 @@ pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 	    [#scu_record{user_pid = UserPid}] ->
 		{ok, UserPid};
 	    _ ->
-		{error, no_such_ssn}
+		% check if somebody has bound a SSN to all point codes
+		case ets:lookup(sccp_user_tbl, {Ssn, undefined}) of
+		    [#scu_record{user_pid = UserPid}] ->
+			{ok, UserPid};
+		    _ ->
+			{error, no_such_ssn}
+		end
 	end;
 pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
 	PcInt = osmo_util:pointcode2int(Pc),
