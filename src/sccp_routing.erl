@@ -229,7 +229,8 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	% FIXME: handle translation already performed == yes) case of C.1/Q.714 (1/12)
 	route_main(SccpMsg),
 	%LsName = ss7_routes:route_dpc(),
-	{remote, SccpMsg}.
+	LsName = undefined,
+	{remote, SccpMsg, LsName}.
 
 
 % CR or connectionless message, coming in from MTP
