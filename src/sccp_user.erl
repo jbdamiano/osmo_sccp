@@ -102,7 +102,7 @@ local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 	end;
 local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
 	PcInt = osmo_util:pointcode2int(Pc),
-	local_ssn_avail(Ssn, Pc).
+	local_ssn_avail(Ssn, PcInt).
 
 
 dump() ->
