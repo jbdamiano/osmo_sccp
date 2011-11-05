@@ -183,6 +183,7 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION-MSG',
 		spec_name = request, parameters = Msg}, LoopDat) ->
 	% encode the actual SCCP message
 	EncMsg = sccp_codec:encode_sccp_msg(Msg),
+	% FIXME: routing and create_mtp3_out()
 	% generate a MTP-TRANSFER.req primitive to the lower layer
 	send_mtp_transfer_down(LoopDat, EncMsg),
 	{next_state, idle, LoopDat};
@@ -191,6 +192,7 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 		spec_name = confirm, parameters = Params}, LoopDat) ->
 	% encode the actual SCCP message
 	EncMsg = sccp_codec:encode_sccp_msgt(?SCCP_MSGT_CC, Params),
+	% FIXME: routing and create_mtp3_out()
 	% generate a MTP-TRANSFER.req primitive to the lower layer
 	send_mtp_transfer_down(LoopDat, EncMsg),
 	{next_state, idle, LoopDat};
@@ -201,6 +203,7 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 		spec_name = indication, parameters = Params}, LoopDat) ->
 	% encode the actual SCCP message
 	EncMsg = sccp_codec:encode_sccp_msgt(?SCCP_MSGT_CR, Params),
+	% FIXME: routing and create_mtp3_out()
 	% generate a MTP-TRANSFER.req primitive to the lower layer
 	send_mtp_transfer_down(LoopDat, EncMsg),
 	{next_state, idle, LoopDat}.
