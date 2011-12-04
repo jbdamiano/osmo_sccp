@@ -133,7 +133,7 @@ route_local_out_action(1, SccpMsg, CalledParty) ->
 		% primitive is invoked unless the compatibility test returns
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
-		LsName = ss7_routes:route_dpc(Pc),
+		{ok, LsName} = ss7_routes:route_dpc(Pc),
 		{remote, SccpMsg, LsName}
 	end;
 
@@ -158,7 +158,7 @@ route_local_out_action(2, SccpMsg, CalledParty) ->
 			% compatibility test returns the message to SCLC or
 			% unless the message is discarded by the traffic
 			% limitation mechanism
-			LsName = ss7_routes:route_dpc(Dpc),
+			{ok, LsName} = ss7_routes:route_dpc(Dpc),
 			{remote, SccpMsg, LsName}
 		end
 	end;
@@ -178,7 +178,7 @@ route_local_out_action(3, SccpMsg, CalledParty) ->
 		% primitive is invoked unless the compatibility test returns
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
-		LsName = ss7_routes:route_dpc(Pc),
+		{ok, LsName} = ss7_routes:route_dpc(Pc),
 		{remote, SccpMsg, LsName}
 	end;
 
