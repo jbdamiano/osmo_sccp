@@ -32,7 +32,7 @@
 -export([start_link/0]).
 
 % client functions, may internally talk to our sccp_user server
--export([bind_ssn/2, unbind_ssn/2, pid_for_ssn/2, local_ssn_avail/2,
+-export([bind_ssn/1, bind_ssn/2, unbind_ssn/2, pid_for_ssn/2, local_ssn_avail/2,
 	 dump/0]).
 
 -record(scu_state, {
@@ -60,20 +60,17 @@ bind_ssn(Ssn) when is_integer(Ssn) ->
 	gen_server:call(?MODULE, {bind_ssn, Ssn, undefined}).
 bind_ssn(Ssn, undefined) when is_integer(Ssn) ->
 	gen_server:call(?MODULE, {bind_ssn, Ssn, undefined});
-bind_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
-	gen_server:call(?MODULE, {bind_ssn, Ssn, Pc});
-bind_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
-	PcInt = osmo_util:pointcode2int(Pc),
-	bind_ssn(Ssn, PcInt).
+bind_ssn(Ssn, PcIn) when is_integer(Ssn) ->
+	Pc = osmo_util:pointcode2int(PcIn),
+	gen_server:call(?MODULE, {bind_ssn, Ssn, Pc}).
 
-unbind_ssn(Ssn, Pc) when is_integer(Pc) ->
-	gen_server:call(?MODULE, {unbind_ssn, Ssn, Pc});
-unbind_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
-	PcInt = osmo_util:pointcode2int(Pc),
-	unbind_ssn(Ssn, PcInt).
+unbind_ssn(Ssn, PcIn) when is_integer(Ssn) ->
+	Pc = osmo_util:pointcode2int(PcIn),
+	gen_server:call(?MODULE, {unbind_ssn, Ssn, Pc}).
 
 % determine the pid registered for a given {Ssn, PC}
-pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
+pid_for_ssn(Ssn, PcIn) when is_integer(Ssn) ->
+	Pc = osmo_util:pointcode2int(PcIn),
 	% as this is only a read access, we read the ets table directly
 	% rather than going through call/2
 	case ets:lookup(sccp_user_tbl, {Ssn, Pc}) of
@@ -87,23 +84,16 @@ pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
 		    _ ->
 			{error, no_such_ssn}
 		end
-	end;
-pid_for_ssn(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
-	PcInt = osmo_util:pointcode2int(Pc),
-	pid_for_ssn(Ssn, PcInt).
+	end.
 
-
-local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_integer(Pc) ->
+local_ssn_avail(Ssn, PcIn) when is_integer(Ssn) ->
+	Pc = osmo_util:pointcode2int(PcIn),
 	case pid_for_ssn(Ssn, Pc) of
-	    {ok, UserPid} ->
+	    {ok, _UserPid} ->
 		true;
 	    _ ->
 		false
-	end;
-local_ssn_avail(Ssn, Pc) when is_integer(Ssn), is_tuple(Pc) ->
-	PcInt = osmo_util:pointcode2int(Pc),
-	local_ssn_avail(Ssn, PcInt).
-
+	end.
 
 dump() ->
 	List = ets:tab2list(sccp_user_tbl),
@@ -126,7 +116,7 @@ handle_call({bind_ssn, Ssn, Pc}, {FromPid, _FromRef}, S) ->
 	case ets:insert_new(Tbl, NewRec) of
 	    false ->
 		{reply, {error, ets_insert}, S};
-	    Error ->
+	    _ ->
 		% We need to trap the user Pid for EXIT
 		% in order to automatically remove any SSN if
 		% the user process dies
