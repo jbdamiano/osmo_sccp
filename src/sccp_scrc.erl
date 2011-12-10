@@ -155,7 +155,7 @@ idle(P= #primitive{subsystem = 'N', gen_name = 'UNITDATA',
 			% FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3),
+			send_mtp_transfer_down(LoopDat, M3, LsName),
 			LoopDat1 = LoopDat;
 		{local, SccpMsg2, UserPid} ->
 			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
@@ -169,7 +169,7 @@ idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 		{remote, SccpMsg2, LsName} ->
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3),
+			send_mtp_transfer_down(LoopDat, M3, LsName),
 			LoopDat1 = LoopDat;
 		{local, SccpMsg, UserPid} ->
 			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg, UserPid)
@@ -211,6 +211,9 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 send_mtp_transfer_down(LoopDat, Mtp3) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3).
 
+send_mtp_transfer_down(LoopDat, Mtp3, LsName) when is_record(Mtp3, mtp3_msg) ->
+	ss7_links:mtp3_tx(Mtp3, LsName).
+
 create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
 	CalledParty = proplists:get_value(called_party_addr,
 					  SccpMsg#sccp_msg.parameters),
@@ -250,7 +253,7 @@ handle_info({'$gen_cast', P=#primitive{}}, State, LoopDat) ->
 			% FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3),
+			send_mtp_transfer_down(LoopDat, M3, LsName),
 			LoopDat1 = LoopDat;
 		{local, SccpMsg2, UserPid} ->
 			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
