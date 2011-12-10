@@ -26,8 +26,9 @@
 
 -export([route_mtp3_sccp_in/1, route_local_out/1, select_opc/2]).
 
-pointcode_is_local(Pc) when is_integer(Pc) ->
-	ss7_links:is_pc_local(Pc).
+pointcode_is_local(Pc) ->
+	PcInt = osmo_util:pointcode2int(Pc),
+	ss7_links:is_pc_local(PcInt).
 
 % local helper function
 msg_return_or_cr_refusal(SccpMsg, RetCause, RefCause) ->
