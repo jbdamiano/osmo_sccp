@@ -8,6 +8,7 @@
 			sccp_scrc,
 			sccp_scoc,
 			sccp_user,
+			osmo_sccp_tcap,
 			sccp_ssn_dump
 		]},
 	 {registered, [osmo_sccp_app]},
