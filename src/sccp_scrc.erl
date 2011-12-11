@@ -249,6 +249,9 @@ handle_info({'$gen_cast', P=#primitive{}}, State, LoopDat) ->
 	{ok, SccpMsg} = sccp_codec:parse_sccp_msg(Mtp3#mtp3_msg.payload),
 	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
 	case sccp_routing:route_local_out(SccpMsg) of
+		{error, routing} ->
+			% routing tells us local subsystem not equipped
+			LoopDat1 = LoopDat;
 		{remote, SccpMsg2, LsName} ->
 			% FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
