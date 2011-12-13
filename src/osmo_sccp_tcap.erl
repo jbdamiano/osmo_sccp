@@ -25,7 +25,7 @@ start_link(SSN) ->
 	Ourname = list_to_atom("sccp_ssn" ++ integer_to_list(SSN)),
 	gen_server:start_link({local, Ourname}, ?MODULE, [SSN],[]).
 
-init([SupRef, SSN]) ->
+init([SSN]) ->
 	ok = sccp_user:bind_ssn(SSN, undefined),
 	State = 1,
 	{ok, State}.
@@ -35,6 +35,7 @@ handle_call(stop, _From, State) ->
 
 handle_cast(Request, State) ->
 	error_logger:error_report(["unknown handle_cast",
+				   {module, ?MODULE},
 				   {request, Request}, {state, State}]),
 	{noreply, State}.
 
@@ -62,11 +63,12 @@ handle_info({sccp, P= #primitive{subsystem='N',
 	{noreply, State};
 handle_info(Info, State) ->
 	error_logger:error_report(["unknown handle_info",
+				   {module, ?MODULE},
 				   {info, Info}, {state, State}]),
 	{noreply, State}.
 
 terminate(Reason, State) ->
-	io:format("terminating with Reason ~w", [Reason]),
+	io:format("osmo_sccp_tcap terminating with Reason ~w", [Reason]),
 	ok.
 
 %% @spec (NSAP) -> ok
