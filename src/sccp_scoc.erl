@@ -123,9 +123,11 @@ stop_inact_timers(#state{rx_inact_timer = Tiar, tx_inact_timer = Tias}) ->
 idle(#primitive{subsystem = 'N', gen_name = 'CONNECT',
 	        spec_name = request, parameters = Param}, LoopDat) ->
 	% local reference already assigned in SCRC when instantiating this SCOC
+	LocalRef = LoopDat#state.local_reference,
 	% FIXME: determine protocol class and credit
+	ParamDown = Param ++ [{src_local_ref, LocalRef}, {protocol_class, {2,0}}],
 	gen_fsm:send_event(LoopDat#state.scrc_pid,
-			   osmo_util:make_prim('OCRC','CONNECTION', indication, Param)),
+			   osmo_util:make_prim('OCRC','CONNECTION', indication, ParamDown)),
 	% start connection timer
 	{next_state, conn_pend_out, LoopDat, ?CONNECTION_TIMER};
 
