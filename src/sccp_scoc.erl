@@ -220,22 +220,33 @@ conn_pend_out(timeout, LoopDat) ->
 	rel_res_disc_ind_idle_2(LoopDat);
 conn_pend_out(routing_failure, LoopDat) ->
 	rel_res_disc_ind_idle_2(LoopDat);
-conn_pend_out(released, LoopDat) ->
+conn_pend_out(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
+			 spec_name = indication,
+			 parameters = #sccp_msg{msg_type = ?SCCP_MSGT_RLSD,
+						parameters = Params}}, LoopDat) ->
 	gen_fsm:send_event(LoopDat#state.scrc_pid,
 			   osmo_util:make_prim('OCRC',  'RELEASE COMPLETE', indication)),
 	rel_res_disc_ind_idle_2(LoopDat);
 % other N-PDU Type
 conn_pend_out(other_npdu_type, LoopDat) ->
 	rel_res_disc_ind_idle_2(LoopDat);
-conn_pend_out(connection_refused, LoopDat) ->
+conn_pend_out(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
+			 spec_name = indication,
+			 parameters = #sccp_msg{msg_type = ?SCCP_MSGT_CREF,
+						parameters = Params}}, LoopDat) ->
 	rel_res_disc_ind_idle_2(LoopDat);
-conn_pend_out(connection_confirm, LoopDat) ->
+conn_pend_out(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
+			 spec_name = indication,
+			 parameters = #sccp_msg{msg_type = ?SCCP_MSGT_CC,
+						parameters = Params}}, LoopDat) ->
 	% start inactivity timers
 	LoopDat1 = start_inact_timers(LoopDat),
 	% assign protocol class and associate remote reference to connection
+	SrcLocalRef = proplists:get_value(src_local_ref, Params),
+	LoopDat2 = LoopDat1#state{remote_reference = SrcLocalRef},
 	% send N-CONNECT.conf to user
-	send_user(LoopDat1, #primitive{subsystem = 'N', gen_name = 'CONNECT',
-				       spec_name = confirm}),
+	send_user(LoopDat2, #primitive{subsystem = 'N', gen_name = 'CONNECT',
+				       spec_name = confirm, parameters = Params}),
 	{next_state, active, LoopDat1}.
 
 stop_c_tmr_rel_idle_5(LoopDat) ->
