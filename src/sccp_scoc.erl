@@ -224,8 +224,9 @@ conn_pend_out(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
 			 spec_name = indication,
 			 parameters = #sccp_msg{msg_type = ?SCCP_MSGT_RLSD,
 						parameters = Params}}, LoopDat) ->
+	Sccp = #sccp_msg{msg_type = ?SCCP_MSGT_RLC, parameters = Params},
 	gen_fsm:send_event(LoopDat#state.scrc_pid,
-			   osmo_util:make_prim('OCRC',  'RELEASE COMPLETE', indication)),
+			   osmo_util:make_prim('OCRC',  'CONNECTION-MSG', indication, Sccp)),
 	rel_res_disc_ind_idle_2(LoopDat);
 % other N-PDU Type
 conn_pend_out(other_npdu_type, LoopDat) ->
@@ -291,16 +292,20 @@ active(#primitive{subsystem = 'N', gen_name = 'DISCONNECT',
 	relsd_tmr_disc_pend_6(LoopDat);
 active(internal_disconnect, LoopDat) ->
 	disc_ind_stop_rel_3(LoopDat);
-active(connection_refused, LoopDat) ->
+active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
+		  parameters = #sccp_msg{msg_type = MsgType,
+					 parameters = Params}}, LoopDat)
+			when 	MsgType == ?SCCP_MSGT_CREF;
+				MsgType == ?SCCP_MSGT_CC;
+				MsgType == ?SCCP_MSGT_RLC ->
 	{next_state, active, LoopDat};
-active(connection_confirm, LoopDat) ->
-	{next_state, active, LoopDat};
-active(release_complete, LoopDat) ->
-	{next_state, active, LoopDat};
-active(released, LoopDat) ->
+active(#primitive{subsystem = 'RCOC', gen_name ='CONNECTION-MSG',
+		  spec_name = indication,
+		  parameters = #sccp_msg{msg_type = ?SCCP_MSGT_RLSD,
+					 parameters = Params}}, LoopDat) ->
 	% send N-DISCONNECT.ind to user
 	send_user(LoopDat, #primitive{subsystem = 'N', gen_name = 'DISCONNECT',
-				      spec_name = indication}),
+				      spec_name = indication, parameters = Params}),
 	% release resources and local reference (freeze)
 	% stop inactivity timers
 	stop_inact_timers(LoopDat),
