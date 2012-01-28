@@ -69,7 +69,7 @@ terminate(Reason, _State, _LoopDat) ->
 	ok.
 
 % helper function to create new SCOC instance
-spawn_new_scoc(LoopDat) ->
+spawn_new_scoc(LoopDat) when is_record(LoopDat, scrc_state) ->
 	% create new SCOC instance
 	UserPid = LoopDat#scrc_state.user_pid,
 	% Compute the new local reference
@@ -92,7 +92,8 @@ is_cr_or_connless(SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	end.
 
 % deliver message to local SCOC or SCLC
-deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg) ->
+deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg),
+						 is_record(LoopDat, scrc_state) ->
 	case Msg of
 		% special handling for CR message here in SCRC
 		#sccp_msg{msg_type = ?SCCP_MSGT_CR} ->
@@ -138,7 +139,7 @@ deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg) ->
 
 % N-CONNECT.req from user: spawn new SCOC and deliver primitive to it
 idle(P = #primitive{subsystem = 'N', gen_name = 'CONNECT',
-		    spec_name = request, parameters = Params}, LoopDat) ->
+		    spec_name = request}, LoopDat) ->
 	% Start new SCOC instance
 	{LoopDat1, ScocPid} = spawn_new_scoc(LoopDat),
 	% Deliver primitive to new SCOC instance
@@ -146,33 +147,39 @@ idle(P = #primitive{subsystem = 'N', gen_name = 'CONNECT',
 	{next_state, idle, LoopDat1};
 
 % N-UNITDATA.req from user (normally this is SCLC, but we don't have SCLC)
-idle(P= #primitive{subsystem = 'N', gen_name = 'UNITDATA',
+idle(#primitive{subsystem = 'N', gen_name = 'UNITDATA',
 		   spec_name = request, parameters = Params}, LoopDat) ->
 	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
 	SccpMsg = #sccp_msg{msg_type = ?SCCP_MSGT_UDT, parameters = Params},
-	case sccp_routing:route_local_out(SccpMsg) of
-		{remote, SccpMsg2, LsName} ->
-			% FIXME: get to MTP-TRANSFER.req
-			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
-			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3, LsName),
-			LoopDat1 = LoopDat;
-		{local, SccpMsg2, UserPid} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
-	end,
-	{next_state, idle, LoopDat1};
+	LoopDat2 = send_sccp_local_out(LoopDat, SccpMsg),
+	{next_state, idle, LoopDat2};
 
 % MTP-TRANSFER.ind from lower layer is passed into SCRC
 idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
-		spec_name = indication, parameters = Params}, LoopDat) ->
-	case sccp_routing:route_mtp3_sccp_in(Params) of
+		spec_name = indication, parameters = Mtp3}, LoopDat) ->
+	case sccp_routing:route_mtp3_sccp_in(Mtp3) of
 		{remote, SccpMsg2, LsName} ->
+			io:format("routed to remote?!?~n"),
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3, LsName),
+			send_mtp_transfer_down(M3, LsName),
 			LoopDat1 = LoopDat;
 		{local, SccpMsg, UserPid} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg, UserPid)
+			% store the MTP3 routing label in case of CC, as SCCP
+			% needs to know it in order to send CO messages later
+			if SccpMsg#sccp_msg.msg_type == ?SCCP_MSGT_CC;
+			   SccpMsg#sccp_msg.msg_type == ?SCCP_MSGT_CR ->
+					Params = SccpMsg#sccp_msg.parameters,
+					Mtp3Label = Mtp3#mtp3_msg.routing_label,
+					ParamsNew = [{mtp3_label, Mtp3Label}],
+					SccpMsg2 = SccpMsg#sccp_msg{parameters = Params ++ ParamsNew};
+				true ->
+					SccpMsg2 = SccpMsg
+			end,
+			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid);
+		{error, Reason} ->
+			io:format("route_mtp3_sccp_in: Error ~w~n", [Reason]),
+			LoopDat1 = LoopDat
 	end,
 	{next_state, idle, LoopDat1};
 idle({sclc_scrc_connless_msg, SccpMsg}, LoopDat) ->
@@ -180,38 +187,41 @@ idle({sclc_scrc_connless_msg, SccpMsg}, LoopDat) ->
 	{next_state, idle, LoopDat};
 % connection oriented messages like N-DATA.req from user
 idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION-MSG',
-		spec_name = request, parameters = Msg}, LoopDat) ->
-	% encode the actual SCCP message
-	EncMsg = sccp_codec:encode_sccp_msg(Msg),
-	% FIXME: routing and create_mtp3_out()
-	% generate a MTP-TRANSFER.req primitive to the lower layer
-	send_mtp_transfer_down(LoopDat, EncMsg),
+		spec_name = request, parameters = [SccpMsg, Label]}, LoopDat) ->
+	% use the label to route, not the SCCP header!!
+	% according to (2) of sheet 5 SCRC state machine Q.714
+	SccpEnc = sccp_codec:encode_sccp_msg(SccpMsg),
+	M3 = #mtp3_msg{network_ind = ?MTP3_NETIND_INTERNATIONAL,
+		       service_ind = ?MTP3_SERV_SCCP,
+		       routing_label = Label,
+		       payload = SccpEnc},
+	case ss7_routes:route_dpc(Label#mtp3_routing_label.dest_pc) of
+		{ok, LsName} ->
+			send_mtp_transfer_down(M3, LsName);
+		{error, Error} ->
+			io:format("unable to find linkset fo Dpc ~p CONNECTION-MSG~n",
+				[Label#mtp3_routing_label.dest_pc])
+	end,
 	{next_state, idle, LoopDat};
 % SCOC has received confirmation about new incoming connection from user
 idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 		spec_name = confirm, parameters = Params}, LoopDat) ->
-	% encode the actual SCCP message
-	EncMsg = sccp_codec:encode_sccp_msgt(?SCCP_MSGT_CC, Params),
-	% FIXME: routing and create_mtp3_out()
-	% generate a MTP-TRANSFER.req primitive to the lower layer
-	send_mtp_transfer_down(LoopDat, EncMsg),
-	{next_state, idle, LoopDat};
+	SccpMsg = #sccp_msg{msg_type=?SCCP_MSGT_CC, parameters=Params},
+	LoopDat2 = send_sccp_local_out(LoopDat, SccpMsg),
+	{next_state, idle, LoopDat2};
 
 
 % triggered by N-CONNECT.req from user to SCOC:
 idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 		spec_name = indication, parameters = Params}, LoopDat) ->
-	% encode the actual SCCP message
-	EncMsg = sccp_codec:encode_sccp_msgt(?SCCP_MSGT_CR, Params),
-	% FIXME: routing and create_mtp3_out()
-	% generate a MTP-TRANSFER.req primitive to the lower layer
-	send_mtp_transfer_down(LoopDat, EncMsg),
-	{next_state, idle, LoopDat}.
+	SccpMsg = #sccp_msg{msg_type=?SCCP_MSGT_CR, parameters=Params},
+	LoopDat2 = send_sccp_local_out(LoopDat, SccpMsg),
+	{next_state, idle, LoopDat2}.
 
-send_mtp_transfer_down(LoopDat, Mtp3) when is_record(Mtp3, mtp3_msg) ->
+send_mtp_transfer_down(Mtp3) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3).
 
-send_mtp_transfer_down(LoopDat, Mtp3, LsName) when is_record(Mtp3, mtp3_msg) ->
+send_mtp_transfer_down(Mtp3, LsName) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3, LsName).
 
 create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
@@ -242,24 +252,24 @@ create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
 		end
 	end.
 
-% FIXME: the MTP3 code should net send a gen_serve:cast ?!?
-handle_info({'$gen_cast', P=#primitive{}}, State, LoopDat) ->
-	#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
-		spec_name = indication, parameters = Mtp3} = P,
-	{ok, SccpMsg} = sccp_codec:parse_sccp_msg(Mtp3#mtp3_msg.payload),
-	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
+send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	case sccp_routing:route_local_out(SccpMsg) of
-		{error, routing} ->
-			% routing tells us local subsystem not equipped
-			LoopDat1 = LoopDat;
 		{remote, SccpMsg2, LsName} ->
 			% FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(LoopDat, M3, LsName),
-			LoopDat1 = LoopDat;
+			send_mtp_transfer_down(M3, LsName),
+			LoopDat;
 		{local, SccpMsg2, UserPid} ->
-			LoopDat1 = deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid)
-	end,
-	{next_state, idle, LoopDat1}.
+			deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid);
+		{error, Reason} ->
+			io:format("sccp_local_out Routing Failure ~p~n", [SccpMsg]),
+			LoopDat
+	end.
 
+% FIXME: the MTP3 code should net send a gen_serve:cast ?!?
+handle_info({'$gen_cast', P=#primitive{}}, _State, LoopDat) ->
+	#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
+		spec_name = indication, parameters = Mtp3} = P,
+	gen_fsm:send_event(self(), P),
+	{next_state, idle, LoopDat}.
