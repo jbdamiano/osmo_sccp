@@ -33,10 +33,10 @@ start_link(Ssns) ->
 	gen_server:start_link(sccp_ssn_dump, [Ssns], []).
 
 init([Ssn]) when is_tuple(Ssn) ->
-	init([Ssn]);
+	init([[Ssn]]);
 init([Ssns]) when is_list(Ssns) ->
 	bind_ssns(Ssns),
-	{ok, idle, #loop_dat{ssns = Ssns}}.
+	{ok, #loop_dat{ssns = Ssns}}.
 
 bind_ssns([]) ->
 	ok;
