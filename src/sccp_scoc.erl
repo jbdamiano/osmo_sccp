@@ -93,11 +93,13 @@ send_user(_LoopDat = #state{user_pid = Pid}, Prim = #primitive{}) ->
 
 % low-level functions regarding activity timers
 restart_tx_inact_timer(LoopDat) ->
+	timer:cancel(LoopDat#state.tx_inact_timer),
 	{ok, Tias} = timer:apply_after(?TX_INACT_TIMER, gen_fsm, send_all_state_event,
 				 	[self(), {timer_expired, tx_inact_timer}]),
 	LoopDat#state{tx_inact_timer = Tias}.
 
 restart_rx_inact_timer(LoopDat) ->
+	timer:cancel(LoopDat#state.rx_inact_timer),
 	{ok, Tiar} = timer:apply_after(?RX_INACT_TIMER, gen_fsm, send_all_state_event,
 				 	[self(), {timer_expired, rx_inact_timer}]),
 	LoopDat#state{rx_inact_timer = Tiar}.
@@ -322,7 +324,9 @@ active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
 			when 	MsgType == ?SCCP_MSGT_CREF;
 				MsgType == ?SCCP_MSGT_CC;
 				MsgType == ?SCCP_MSGT_RLC ->
-	{next_state, active, LoopDat};
+	% restart receive inactivity timer
+	LoopDat1 = restart_rx_inact_timer(LoopDat),
+	{next_state, active, LoopDat1};
 active(#primitive{subsystem = 'RCOC', gen_name ='CONNECTION-MSG',
 		  spec_name = indication,
 		  parameters = #sccp_msg{msg_type = ?SCCP_MSGT_RLSD,
@@ -406,22 +410,24 @@ active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
 		  spec_name = indication,
 		  parameters = #sccp_msg{msg_type = ?SCCP_MSGT_IT,
 					 parameters = Params}}, LoopDat) ->
+	% restart receive inactivity timer
+	LoopDat1 = restart_rx_inact_timer(LoopDat),
 	% Section 3.4 Inactivity control
 	SrcRef = proplists:get_value(src_local_ref, Params),
-	case LoopDat#state.remote_reference of
+	case LoopDat1#state.remote_reference of
 		SrcRef ->
 			ClassOpt = proplists:get_value(protocol_class, Params),
-			case LoopDat#state.class of
+			case LoopDat1#state.class of
 				ClassOpt ->
 					% FIXME: class3: discrepancy in seq/segm or credit -> reset
-					{next_state, active, LoopDat};
+					{next_state, active, LoopDat1};
 				_ ->
 					% discrepancy in class -> release
-					disc_ind_stop_rel_3(LoopDat, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
+					disc_ind_stop_rel_3(LoopDat1, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
 			end;
 		_ ->
 			% discrepancy in src ref -> release
-			disc_ind_stop_rel_3(LoopDat, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
+			disc_ind_stop_rel_3(LoopDat1, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
 	end;
 active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
 		  spec_name = indication,
