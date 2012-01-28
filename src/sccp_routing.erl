@@ -225,13 +225,13 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 		% Optional screening function
 		% GTT needs to be performed
 		ok
-	end,
+	end.
 	% FIXME: handle UDTS/XUDTS/LUDTS messages (RI=0 check) of C.1/Q.714 (1/12)
 	% FIXME: handle translation already performed == yes) case of C.1/Q.714 (1/12)
-	route_main(SccpMsg),
+	%route_main(SccpMsg),
 	%LsName = ss7_routes:route_dpc(),
-	LsName = undefined,
-	{remote, SccpMsg, LsName}.
+	%LsName = undefined,
+	%{remote, SccpMsg, LsName}.
 
 
 % CR or connectionless message, coming in from MTP
