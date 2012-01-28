@@ -25,7 +25,9 @@ start_link(SSN) ->
 	Ourname = list_to_atom("sccp_ssn" ++ integer_to_list(SSN)),
 	gen_server:start_link({local, Ourname}, ?MODULE, [SSN],[]).
 
-init([SSN]) ->
+init([SSN]) when is_integer(SSN) ->
+	init(SSN);
+init(SSN) when is_integer(SSN) ->
 	ok = sccp_user:bind_ssn(SSN, undefined),
 	State = 1,
 	{ok, State}.
