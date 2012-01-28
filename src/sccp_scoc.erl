@@ -404,6 +404,27 @@ active(internal_reset_req, LoopDat) ->
 	{next_state, bothway_reset, LoopDat1, ?RESET_TIMER};
 active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
 		  spec_name = indication,
+		  parameters = #sccp_msg{msg_type = ?SCCP_MSGT_IT,
+					 parameters = Params}}, LoopDat) ->
+	% Section 3.4 Inactivity control
+	SrcRef = proplists:get_value(src_local_ref, Params),
+	case LoopDat#state.remote_reference of
+		SrcRef ->
+			ClassOpt = proplists:get_value(protocol_class, Params),
+			case LoopDat#state.class of
+				ClassOpt ->
+					% FIXME: class3: discrepancy in seq/segm or credit -> reset
+					{next_state, active, LoopDat};
+				_ ->
+					% discrepancy in class -> release
+					disc_ind_stop_rel_3(LoopDat, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
+			end;
+		_ ->
+			% discrepancy in src ref -> release
+			disc_ind_stop_rel_3(LoopDat, ?SCCP_CAUSE_REL_INCONS_CONN_DAT)
+	end;
+active(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION-MSG',
+		  spec_name = indication,
 		  parameters = #sccp_msg{msg_type = ?SCCP_MSGT_RSC}}, LoopDat) ->
 	% discard received message
 	{next_state, active, LoopDat};
