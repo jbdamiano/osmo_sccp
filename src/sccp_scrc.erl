@@ -30,7 +30,7 @@
 -record(scrc_state, {
 		scoc_conn_ets,
 		next_local_ref,
-		user_pid	% pid() of the user process
+		sup_pid	% pid() of the supervisor
 	}).
 % TODO: Integrate with proper SCCP routing / GTT implementation
 
@@ -49,13 +49,13 @@ tx_prim_to_local_ref(Prim, LocalRef) ->
 start_link(InitData) ->
 	% make sure to store the Pid of the caller in the scrc_state
 	gen_fsm:start_link({local, sccp_scrc}, sccp_scrc, 
-			   [{user_pid,self()}|InitData], [{debug, [trace]}]).
+			   [{sup_pid,self()}|InitData], [{debug, [trace]}]).
 
 % gen_fsm init callback, called by start_link()
 init(InitPropList) ->
 	io:format("SCRC Init PropList~p ~n", [InitPropList]),
-	UserPid = proplists:get_value(user_pid, InitPropList),
-	LoopData = #scrc_state{user_pid = UserPid, next_local_ref = 0},
+	UserPid = proplists:get_value(sup_pid, InitPropList),
+	LoopData = #scrc_state{sup_pid = UserPid, next_local_ref = 0},
 	TableRef = ets:new(scoc_by_ref, [set]),
 	put(scoc_by_ref, TableRef),
 	ok = ss7_links:bind_service(?MTP3_SERV_SCCP, "osmo_sccp"),
@@ -69,14 +69,14 @@ terminate(Reason, _State, _LoopDat) ->
 	ok.
 
 % helper function to create new SCOC instance
-spawn_new_scoc(LoopDat) when is_record(LoopDat, scrc_state) ->
+spawn_new_scoc(LoopDat, UserPid) when is_record(LoopDat, scrc_state) ->
 	% create new SCOC instance
-	UserPid = LoopDat#scrc_state.user_pid,
 	% Compute the new local reference
 	LocalRef = LoopDat#scrc_state.next_local_ref + 1,
 	LoopDat1 = LoopDat#scrc_state{next_local_ref = LocalRef},
 	% generate proplist for SCRC initialization
 	ScocPropList = [{scrc_pid, self()}, {user_pid, UserPid}, {local_reference, LocalRef}],
+	% FIXME: we should rather ask the supervisor to start it on our behalf
 	{ok, ScocPid} = sccp_scoc:start_link(ScocPropList),
 	% insert SCOC instance in connection table
 	ConnTable = get(scoc_by_ref),
@@ -98,7 +98,7 @@ deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg),
 		% special handling for CR message here in SCRC
 		#sccp_msg{msg_type = ?SCCP_MSGT_CR} ->
 			% spawn a new SCOC instance/process
-			{LoopDat1, ScocPid} = spawn_new_scoc(LoopDat),
+			{LoopDat1, ScocPid} = spawn_new_scoc(LoopDat, UserPid),
 			% send a RCOC-CONNECTING.ind primitive to the new SCOC fsm
 			UserPrim = osmo_util:make_prim('RCOC','CONNECTION', indication, Msg#sccp_msg.parameters),
 			io:format("Sending ~p to ~p~n", [UserPrim, ScocPid]),
@@ -139,11 +139,13 @@ deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg),
 
 % N-CONNECT.req from user: spawn new SCOC and deliver primitive to it
 idle(P = #primitive{subsystem = 'N', gen_name = 'CONNECT',
-		    spec_name = request}, LoopDat) ->
+		    spec_name = request, parameters = ParamsIn}, LoopDat) ->
+	UserPid = proplists:get_value(user_pid, ParamsIn),
+	ParamsOut = proplists:delete(user_pid, ParamsIn),
 	% Start new SCOC instance
-	{LoopDat1, ScocPid} = spawn_new_scoc(LoopDat),
+	{LoopDat1, ScocPid} = spawn_new_scoc(LoopDat, UserPid),
 	% Deliver primitive to new SCOC instance
-	gen_fsm:send_event(ScocPid, P),
+	gen_fsm:send_event(ScocPid, P#primitive{parameters = ParamsOut}),
 	{next_state, idle, LoopDat1};
 
 % N-UNITDATA.req from user (normally this is SCLC, but we don't have SCLC)

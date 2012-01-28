@@ -142,10 +142,18 @@ idle(#primitive{subsystem = 'RCOC', gen_name = 'CONNECTION',
 	Class = proplists:get_value(protocol_class, Params),
 	LoopDat1 = LoopDat#state{remote_reference = RemRef, class = Class,
 				 mtp3_label = mtp3_codec:invert_rout_lbl(Mtp3Label)},
-	% send N-CONNECT.ind to user
-	send_user(LoopDat1, osmo_util:make_prim('N', 'CONNECT', indication, [{scoc_pid, self()}|Params])),
-	%#primitive{subsystem = 'N', gen_name = 'CONNECT', spec_name = indication}
-	{next_state, conn_pend_in, LoopDat1};
+	case LoopDat1#state.user_pid of
+		undefined ->
+			io:format("CR to unequipped subsystem!~n"),
+			RefParam = [{refusal_cause, ?SCCP_CAUSE_REF_UNEQUIPPED_USER}],
+			Prim = gen_co_sccp_prim(?SCCP_MSGT_CREF, RefParam, LoopDat1),
+			gen_fsm:send_event(LoopDat#state.scrc_pid, Prim),
+			{next_state, idle, LoopDat1};
+		_ ->
+			% send N-CONNECT.ind to user
+			send_user(LoopDat1, osmo_util:make_prim('N', 'CONNECT', indication, [{scoc_pid, self()}|Params])),
+			{next_state, conn_pend_in, LoopDat1}
+	end;
 
 % RCOC-ROUTING_FAILURE.ind from SCRC
 idle(#primitive{subsystem = 'RCOC', gen_name = 'ROUTING FAILURE',
