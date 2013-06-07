@@ -46,6 +46,11 @@
 	}).
 % TODO: Integrate with proper SCCP routing / GTT implementation
 
+is_notice(#sccp_msg{msg_type=?SCCP_MSGT_UDTS}) -> true;
+is_notice(#sccp_msg{msg_type=?SCCP_MSGT_XUDTS}) -> true;
+is_notice(#sccp_msg{msg_type=?SCCP_MSGT_LUDTS}) -> true;
+is_notice(_) -> false.
+
 tx_prim_to_local_ref(Prim, LocalRef) ->
 	% determine the Pid to which the primitive must be sent
 	ConnTable = get(scoc_by_ref),
@@ -128,8 +133,12 @@ deliver_to_scoc_sclc(LoopDat, Msg, UserPid) when is_record(Msg, sccp_msg),
 					    _ ->
 						% it would be more proper to send them via SCLC ??
 						%gen_fsm:send(sccp_sclc, ??
-						% FIXME: N-NOTICE.ind for NOTICE 
-						UserPrim = osmo_util:make_prim('N','UNITDATA', indication, Msg),
+						case is_notice(Msg) of
+						true ->
+							UserPrim = osmo_util:make_prim('N','NOTICE', indication, Msg);
+						false ->
+							UserPrim = osmo_util:make_prim('N','UNITDATA', indication, Msg)
+						end,
 						UserPid ! {sccp, UserPrim}
 					end;
 				false ->
