@@ -23,7 +23,7 @@
 
 start_link(SSN) ->
 	Ourname = list_to_atom("sccp_ssn" ++ integer_to_list(SSN)),
-	gen_server:start_link({local, Ourname}, ?MODULE, [SSN],[]).
+	gen_server:start_link({local, Ourname}, ?MODULE, [SSN],[{debug,trace}]).
 
 init([SSN]) when is_integer(SSN) ->
 	init(SSN);
@@ -47,7 +47,8 @@ osmo_prim2signerl(#primitive{subsystem='N', gen_name='UNITDATA',
 	CalledAddr = proplists:get_value(called_party_addr, Params),
 	CallingAddr = proplists:get_value(calling_party_addr, Params),
 	UserData = proplists:get_value(user_data, Params),
-	{PC, Opt} = proplists:get_value(protocol_class, Params),
+	% FIXME: doesn't always exist!
+	%{PC, Opt} = proplists:get_value(protocol_class, Params),
 	Rec = #'N-UNITDATA'{calledAddress = CalledAddr,
 			    callingAddress = CallingAddr,
 			    sequenceControl = undefined,
@@ -62,6 +63,15 @@ handle_info({sccp, P= #primitive{subsystem='N',
 				 spec_name=indication}}, State) ->
 	% this is really ugly, we need to make TCO understand #primitives
 	gen_server:cast(self(), osmo_prim2signerl(P)),
+	{noreply, State};
+handle_info({sccp, P= #primitive{subsystem='N',
+				 gen_name='NOTICE',
+				 spec_name=indication}}, State) ->
+	% this is really ugly, we need to make TCO understand #primitives
+	%gen_server:cast(self(), osmo_prim2signerl(P)),
+	error_logger:error_report(["unimplemented N-NOTICE.ind",
+				   {module, ?MODULE},
+				   {sccp, P}, {state, State}]),
 	{noreply, State};
 handle_info(Info, State) ->
 	error_logger:error_report(["unknown handle_info",
