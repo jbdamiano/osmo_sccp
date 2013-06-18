@@ -147,7 +147,7 @@ route_local_out_action(1, SccpMsg, CalledParty) ->
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
 		{ok, LsName} = ss7_routes:route_dpc(Pc),
-		{remote, SccpMsg, LsName}
+		{remote, SccpMsg, LsName, Pc}
 	end;
 
 % Acccording to 2.3.2 Action (2)
@@ -172,7 +172,7 @@ route_local_out_action(2, SccpMsg, CalledParty) ->
 			% unless the message is discarded by the traffic
 			% limitation mechanism
 			{ok, LsName} = ss7_routes:route_dpc(Dpc),
-			{remote, SccpMsg, LsName}
+			{remote, SccpMsg, LsName, Dpc}
 		end
 	end;
 
@@ -192,7 +192,7 @@ route_local_out_action(3, SccpMsg, CalledParty) ->
 		% the message to SCLC or unless the message is discarded by the
 		% traffic limitation mechanism;
 		{ok, LsName} = ss7_routes:route_dpc(Pc),
-		{remote, SccpMsg, LsName}
+		{remote, SccpMsg, LsName, Pc}
 	end;
 
 % Acccording to 2.3.2 Action (4)
@@ -243,7 +243,7 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	%route_main(SccpMsg),
 	%LsName = ss7_routes:route_dpc(),
 	%LsName = undefined,
-	%{remote, SccpMsg, LsName}.
+	%{remote, SccpMsg, LsName, undefined}.
 
 
 % CR or connectionless message, coming in from MTP

@@ -181,9 +181,9 @@ idle(#primitive{subsystem = 'N', gen_name = 'UNITDATA',
 idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 		spec_name = indication, parameters = Mtp3}, LoopDat) ->
 	case sccp_routing:route_mtp3_sccp_in(Mtp3) of
-		{remote, SccpMsg2, LsName} ->
+		{remote, SccpMsg2, LsName, Dpc} ->
 			io:format("routed to remote?!?~n"),
-			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
 			send_mtp_transfer_down(M3, LsName),
 			LoopDat1 = LoopDat;
@@ -247,11 +247,7 @@ send_mtp_transfer_down(Mtp3) when is_record(Mtp3, mtp3_msg) ->
 send_mtp_transfer_down(Mtp3, LsName) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3, LsName).
 
-create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
-	CalledParty = proplists:get_value(called_party_addr,
-					  SccpMsg#sccp_msg.parameters),
-	% we _have_ to have a destination point code here
-	Dpc = CalledParty#sccp_addr.point_code,
+create_mtp3_out(SccpMsg, LsName, Dpc) when is_record(SccpMsg, sccp_msg) ->
 	case Dpc of
 	    undefined ->
 		{error, dpc_undefined};
@@ -275,11 +271,18 @@ create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
 		end
 	end.
 
+create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
+	CalledParty = proplists:get_value(called_party_addr,
+					  SccpMsg#sccp_msg.parameters),
+	% we _have_ to have a destination point code here
+	Dpc = CalledParty#sccp_addr.point_code,
+	create_mtp3_out(SccpMsg, LsName, Dpc).
+
 send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	case sccp_routing:route_local_out(SccpMsg) of
-		{remote, SccpMsg2, LsName} ->
+		{remote, SccpMsg2, LsName, Dpc} ->
 			% FIXME: get to MTP-TRANSFER.req
-			{ok, M3} = create_mtp3_out(SccpMsg2, LsName),
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
 			send_mtp_transfer_down(M3, LsName),
 			LoopDat;
