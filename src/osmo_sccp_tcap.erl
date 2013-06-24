@@ -103,7 +103,6 @@ send_primitive({'N', 'UNITDATA', request, #'N-UNITDATA'{calledAddress = Called,
 						     returnOption = RetOpt,
 						     importance = Imp,
 						     userData = UserData}=Par}, State) ->
-	io:format("N-UNITDATA.req (~w,~w)~n", [Par, State]),
 	ClassOut = protocol_class(tcap_to_osmo, {Seq, RetOpt}),
 	UserDataOut = iolist_to_binary(UserData),
 	% Build an osmo_ss7 primitive
