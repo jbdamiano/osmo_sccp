@@ -299,7 +299,10 @@ check_and_dec_hopctr(Msg = #sccp_msg{msg_type = MsgType}) when
 					  Msg#sccp_msg.parameters,
 					  { ?SCCP_PNC_HOP_COUNTER, HopCtr -1}),
 		Msg#sccp_msg{parameters = ParNew}
-	end.
+	end;
+check_and_dec_hopctr(Msg = #sccp_msg{}) ->
+	Msg.
+
 
 route_main(SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	CalledParty = proplists:get_value(called_party_addr, SccpMsg#sccp_msg.parameters),
