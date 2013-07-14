@@ -66,7 +66,7 @@ tx_prim_to_local_ref(Prim, LocalRef) ->
 start_link(InitData) ->
 	% make sure to store the Pid of the caller in the scrc_state
 	gen_fsm:start_link({local, sccp_scrc}, sccp_scrc, 
-			   [{sup_pid,self()}|InitData], [{debug, [trace]}]).
+			   [{sup_pid,self()}|InitData], [{debug, []}]).
 
 % gen_fsm init callback, called by start_link()
 init(InitPropList) ->
