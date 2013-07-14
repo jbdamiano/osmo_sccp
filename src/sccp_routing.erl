@@ -224,19 +224,34 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 		MsgPostHop = check_and_dec_hopctr(SccpMsg),
 		MsgClass = proplists:get_value(?SCCP_PNC_PROTOCOL_CLASS,
 						MsgPostHop#sccp_msg.parameters),
-		case MsgClass of
-		    0 ->
-			% FIXME: Assign SLS
-			ok;
-		    1 ->
-			% FIXME: Map incoming SLS to outgoing SLS
-			ok;
-		    _Default ->
-			ok
-		end,
-		% Optional screening function
-		% GTT needs to be performed
-		ok
+		%% FIXME: gtt() and others need to be implemented according to
+		%% Q.714 C.1 sheet 2 and 3)
+		#sccp_addr{ssn = Ssn, point_code = Pc}= CalledParty,
+		% check if the subsystem is available (FIXME: move this into SCLC ?!?)
+		case sccp_user:pid_for_ssn(Ssn, Pc) of
+		    {ok, UserPid} ->
+			% forward to SCOC/SCLC
+			{local, SccpMsg, UserPid};
+		    {error, Error} ->
+			% invoke connection refusal (if CR) or message return
+			msg_return_or_cr_refusal(SccpMsg,
+						 ?SCCP_CAUSE_RET_UNEQUIP_USER,
+						 ?SCCP_CAUSE_REF_UNEQUIPPED_USER)
+		end
+
+%		case MsgClass of
+%		    0 ->
+%			% FIXME: Assign SLS
+%			ok;
+%		    1 ->
+%			% FIXME: Map incoming SLS to outgoing SLS
+%			ok;
+%		    _Default ->
+%			ok
+%		end,
+%		% Optional screening function
+%		% GTT needs to be performed
+%		ok
 	end.
 	% FIXME: handle UDTS/XUDTS/LUDTS messages (RI=0 check) of C.1/Q.714 (1/12)
 	% FIXME: handle translation already performed == yes) case of C.1/Q.714 (1/12)
@@ -252,7 +267,7 @@ route_cr_connless(Mtp3Msg, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 %	{remote}
 route_mtp3_sccp_in(Mtp3Msg) when is_record(Mtp3Msg, mtp3_msg) ->
 	{ok, Msg} = sccp_codec:parse_sccp_msg(Mtp3Msg#mtp3_msg.payload),
-        io:format("Parsed Msg: ~p~n", [Msg]),
+        %io:format("Parsed Msg: ~p~n", [Msg]),
 	case Msg of
 	    #sccp_msg{msg_type = ?SCCP_MSGT_CR} ->
 		route_cr_connless(Mtp3Msg, Msg);
