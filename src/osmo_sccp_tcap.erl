@@ -9,7 +9,7 @@
 
 -include_lib("osmo_ss7/include/osmo_util.hrl").
 -include_lib("osmo_ss7/include/sccp.hrl").
--include_lib("TCAP/include/sccp.hrl").
+-include("sccp.hrl").
 
 %% callbacks needed for gen_server behaviour
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

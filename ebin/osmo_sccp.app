@@ -9,7 +9,19 @@
 			sccp_scoc,
 			sccp_user,
 			osmo_sccp_tcap,
-			sccp_ssn_dump
+			sccp_ssn_dump,
+            'DialoguePDUs',
+            'Remote-Operations-Generic-ROS-PDUs',
+            'Remote-Operations-Information-Objects',
+            'Remote-Operations-Useful-Definitions',
+            'TC-TMP',
+            'TC-Testing-User',
+            'TCAP-Examples',
+            'TCAP-Tools',
+            'TCAPMessages',
+            'TR',
+            'UnidialoguePDUs'
+
 		]},
 	 {registered, [osmo_sccp_app]},
 	 {mod, {osmo_sccp_app, []}},

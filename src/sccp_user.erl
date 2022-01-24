@@ -41,7 +41,7 @@
 	 terminate/2, code_change/3]).
 
 % our published API
--export([start_link/0]).
+-export([start_link/0, stop/0]).
 
 % client functions, may internally talk to our sccp_user server
 -export([bind_ssn/1, bind_ssn/2, unbind_ssn/2, pid_for_ssn/2, local_ssn_avail/2,
@@ -65,6 +65,9 @@ init(_Arg) ->
 	UserTbl = ets:new(sccp_user_tbl, [ordered_set, named_table,
 				       {keypos, #scu_record.ssn_pc}]),
 	{ok, #scu_state{user_table = UserTbl}}.
+
+stop() ->
+    gen_server:cast(?MODULE, stop).
 
 % client side code
 
@@ -143,6 +146,8 @@ handle_call({unbind_ssn, Ssn, Pc}, {FromPid, _FromRef}, S) ->
 	ets:delete_object(Tbl, DelRec),
 	{reply, ok, S}.
 
+handle_cast(stop, State) ->
+    {stop, normal, State};
 handle_cast(Info, S) ->
 	error_logger:error_report(["unknown handle_cast",
 				  {module, ?MODULE},

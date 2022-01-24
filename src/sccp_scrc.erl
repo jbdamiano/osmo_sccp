@@ -31,7 +31,7 @@
 
 -module(sccp_scrc).
 -behaviour(gen_fsm).
--export([start_link/1, init/1, terminate/3, idle/2, handle_info/3]).
+-export([start_link/1, init/1, stop/0, terminate/3, idle/2, handle_info/3, handle_event/3]).
 
 -include_lib("osmo_ss7/include/osmo_util.hrl").
 -include_lib("osmo_ss7/include/sccp.hrl").
@@ -42,7 +42,8 @@
 -record(scrc_state, {
 		scoc_conn_ets,
 		next_local_ref,
-		sup_pid	% pid() of the supervisor
+		sup_pid,	% pid() of the supervisor
+        ni
 	}).
 % TODO: Integrate with proper SCCP routing / GTT implementation
 
@@ -68,11 +69,15 @@ start_link(InitData) ->
 	gen_fsm:start_link({local, sccp_scrc}, sccp_scrc, 
 			   [{sup_pid,self()}|InitData], [{debug, []}]).
 
+stop() ->
+    gen_fsm:send_all_state_event(?MODULE, stop).
+
 % gen_fsm init callback, called by start_link()
 init(InitPropList) ->
 	io:format("SCRC Init PropList~p ~n", [InitPropList]),
 	UserPid = proplists:get_value(sup_pid, InitPropList),
-	LoopData = #scrc_state{sup_pid = UserPid, next_local_ref = 0},
+	LoopData = #scrc_state{sup_pid = UserPid, next_local_ref = 0,
+            ni = proplists:get_value(ni, InitPropList)},
 	TableRef = ets:new(scoc_by_ref, [set]),
 	put(scoc_by_ref, TableRef),
 	ok = ss7_links:bind_service(?MTP3_SERV_SCCP, "osmo_sccp"),
@@ -183,7 +188,7 @@ idle(#primitive{subsystem = 'MTP', gen_name = 'TRANSFER',
 	case sccp_routing:route_mtp3_sccp_in(Mtp3) of
 		{remote, SccpMsg2, LsName, Dpc} ->
 			io:format("routed to remote?!?~n"),
-			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc),
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc, LoopDat#scrc_state.ni),
 			% generate a MTP-TRANSFER.req primitive to the lower layer
 			send_mtp_transfer_down(M3, LsName),
 			LoopDat1 = LoopDat;
@@ -241,13 +246,16 @@ idle(#primitive{subsystem = 'OCRC', gen_name = 'CONNECTION',
 	LoopDat2 = send_sccp_local_out(LoopDat, SccpMsg),
 	{next_state, idle, LoopDat2}.
 
+handle_event(stop, _StateName, StateData) ->
+    {stop, normal, StateData}.
+
 send_mtp_transfer_down(Mtp3) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3).
 
 send_mtp_transfer_down(Mtp3, LsName) when is_record(Mtp3, mtp3_msg) ->
 	ss7_links:mtp3_tx(Mtp3, LsName).
 
-create_mtp3_out(SccpMsg, LsName, Dpc) when is_record(SccpMsg, sccp_msg) ->
+create_mtp3_out(SccpMsg, LsName, Dpc, Ni) when is_record(SccpMsg, sccp_msg) ->
 	case Dpc of
 	    undefined ->
 		{error, dpc_undefined};
@@ -263,7 +271,7 @@ create_mtp3_out(SccpMsg, LsName, Dpc) when is_record(SccpMsg, sccp_msg) ->
 			M3R = #mtp3_routing_label{sig_link_sel = 0,
 				  origin_pc = Opc,
 				  dest_pc = Dpc},
-			M3 = #mtp3_msg{network_ind = ?MTP3_NETIND_INTERNATIONAL,
+			M3 = #mtp3_msg{network_ind = Ni,
 				       service_ind = ?MTP3_SERV_SCCP,
 				       routing_label = M3R,
 				       payload = SccpEnc},
@@ -271,21 +279,21 @@ create_mtp3_out(SccpMsg, LsName, Dpc) when is_record(SccpMsg, sccp_msg) ->
 		end
 	end.
 
-create_mtp3_out(SccpMsg, LsName) when is_record(SccpMsg, sccp_msg) ->
+create_mtp3_out(SccpMsg, LsName, Ni) when is_record(SccpMsg, sccp_msg) ->
 	CalledParty = proplists:get_value(called_party_addr,
 					  SccpMsg#sccp_msg.parameters),
 	% we _have_ to have a destination point code here
 	Dpc = CalledParty#sccp_addr.point_code,
-	create_mtp3_out(SccpMsg, LsName, Dpc).
+	create_mtp3_out(SccpMsg, LsName, Dpc, Ni).
 
 send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	case sccp_routing:route_local_out(SccpMsg) of
 		{remote, SccpMsg2, LsName, Dpc} ->
-			% FIXME: get to MTP-TRANSFER.req
-			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc),
-			% generate a MTP-TRANSFER.req primitive to the lower layer
-			send_mtp_transfer_down(M3, LsName),
-			LoopDat;
+            % FIXME: get to MTP-TRANSFER.req
+			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc, LoopDat#scrc_state.ni),
+            % generate a MTP-TRANSFER.req primitive to the lower layer
+			Ret = send_mtp_transfer_down(M3, LsName),
+            LoopDat;
 		{local, SccpMsg2, UserPid} ->
 			deliver_to_scoc_sclc(LoopDat, SccpMsg2, UserPid);
 		{error, Reason} ->
