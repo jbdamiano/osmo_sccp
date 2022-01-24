@@ -293,8 +293,10 @@ send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 			io:format("case 1 ~p~n", [SccpMsg]),
             % FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc, LoopDat#scrc_state.ni),
+			io:format("MTP3 ~n~p~n", [M3]),
             % generate a MTP-TRANSFER.req primitive to the lower layer
 			Ret = send_mtp_transfer_down(M3, LsName),
+			io:format("MTP3 return ~n~p~n", [Ret]),
             LoopDat;
 		{local, SccpMsg2, UserPid} ->
 			io:format("case 2 ~p~n", [SccpMsg]),
