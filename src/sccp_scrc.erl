@@ -290,7 +290,7 @@ create_mtp3_out(SccpMsg, LsName, Ni) when is_record(SccpMsg, sccp_msg) ->
 send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	case sccp_routing:route_local_out(SccpMsg) of
 		{remote, SccpMsg2, LsName, Dpc} ->
-			io:format("case 1 ~p~n", [SccpMsg]),
+			io:format("case 1 ~n~p~n~p~n~p~n", [SccpMsg2, LsName, Dpc]),
             % FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc, LoopDat#scrc_state.ni),
 			io:format("MTP3 ~n~p~n", [M3]),
