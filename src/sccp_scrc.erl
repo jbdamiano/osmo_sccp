@@ -177,7 +177,6 @@ idle(P = #primitive{subsystem = 'N', gen_name = 'CONNECT',
 % N-UNITDATA.req from user (normally this is SCLC, but we don't have SCLC)
 idle(#primitive{subsystem = 'N', gen_name = 'UNITDATA',
 		   spec_name = request, parameters = Params}, LoopDat) ->
-	io:format("send UNIT DATA"),
 	% User needs to specify: Protocol Class, Called Party, Calling Party, Data
 	SccpMsg = #sccp_msg{msg_type = ?SCCP_MSGT_UDT, parameters = Params},
 	LoopDat2 = send_sccp_local_out(LoopDat, SccpMsg),
@@ -290,13 +289,10 @@ create_mtp3_out(SccpMsg, LsName, Ni) when is_record(SccpMsg, sccp_msg) ->
 send_sccp_local_out(LoopDat, SccpMsg) when is_record(SccpMsg, sccp_msg) ->
 	case sccp_routing:route_local_out(SccpMsg) of
 		{remote, SccpMsg2, LsName, Dpc} ->
-			io:format("case 1 ~n~p~n~p~n~p~n", [SccpMsg2, LsName, Dpc]),
             % FIXME: get to MTP-TRANSFER.req
 			{ok, M3} = create_mtp3_out(SccpMsg2, LsName, Dpc, LoopDat#scrc_state.ni),
-			io:format("MTP3 ~n~p~n", [M3]),
             % generate a MTP-TRANSFER.req primitive to the lower layer
 			Ret = send_mtp_transfer_down(M3, LsName),
-			io:format("MTP3 return ~n~p~n", [Ret]),
             LoopDat;
 		{local, SccpMsg2, UserPid} ->
 			io:format("case 2 ~p~n", [SccpMsg]),
